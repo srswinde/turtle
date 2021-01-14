@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %} GIF Maker {% end %}
+{% block head %}
+<style>
+      div#container
+      {
+        padding:10px;
+      }
+			div#top	
+		  {
+				display:flex;
+				justify-content:center;
+			}
+			div#plot_container
+			{
+				padding-left:50%;
+				margin-left:-500px;
+				padding-top:20px;
+			}
+			div#conditions
+			{
+				display:inline-block;
+				padding: 20px;
+			}
+			div#plot
+			{		
+			}
+      img.thumb
+      {
+        margin:10px;
+        box-shadow: 5px 5px 2px grey;
+
+      }
+
+      img.thumb:hover
+      {
+        box-shadow: 10px 10px 5px #333;
+      }
+
+      img.thumb:active
+      {
+        background-color:red;
+      }
+
+      div#main_images
+      {
+        position: fixed;
+        bottom:5px;
+        width:100%;
+        height:400px;
+        background-color:rgba(46, 46, 46, 0.8);
+        padding: 20px;
+      }
+
+      img.main_images
+      {
+        border: 5px solid black;
+      }
+      img#img1
+      {
+        float: right;
+      } 
+      img#gif
+      {
+        margin-left:200px
+      }
+
+      div#container
+      {
+        display:none;
+
+        padding-left:10%;
+        padding-right:20%;
+      }
+      body
+      {
+        padding-bottom:400px;
+      }
+
+    </style>
+    <script>
+			DATA = null;
+      function main()
+      {
+				
+        console.debug("main")
+
+        //global instance 
+        //Kind of used as a namespace
+
+        var ws = new WebSocket("wss://"+document.location.host+"/cassini/images")
+        GIFFER = new gifify(ws);
+        ws.onopen = function()
+        {
+          now = new Date()
+          params = new URLSearchParams(location.search)
+          let hoursAgo
+          if(params.has("hoursAgo"))
+            hoursAgo = parseFloat(params.get("hoursAgo"))
+          else 
+            hoursAgo = 1;
+
+          if(params.has("hoursDelta"))
+            hoursDelta = parseFloat(params.get("hoursDelta"))
+          else 
+            hoursDelta = 1;
+
+          before = new Date(now - hoursAgo*60*60*1000)
+          start = {
+            year:before.getYear()+1900, 
+            month:before.getMonth()+1, 
+            day:before.getDate(), 
+            hour:before.getHours(), 
+            minute:before.getMinutes(), 
+            second:before.getSeconds()
+          }
+
+          delta = {minutes:hoursDelta*60}
+          msg = {
+            action: "collect",
+            start: start,
+            delta: delta
+          }
+          ws.send(JSON.stringify(msg))
+        }
+        ws.onmessage = function(msg)
+        {
+
+          data = JSON.parse(msg.data)
+          console.log(data["error"])
+
+          if( data["action"] == "collect")
+          {
+            for(index in data["imgs"])
+            {
+              let tsrc = "/cassini/"+data["imgs"][index].thumbs
+              let isrc = "/cassini/"+data["imgs"][index].path
+              let id = data["imgs"][index].timestamp
+              let d=new Date(id+7*3600*1000)
+              let img = $("<img/>")
+                .on("click", 
+                  function () 
+                  {
+                    GIFFER.imgClicked(isrc, parseInt($(this).attr("id")));
+                  })
+                .attr("src", tsrc)
+                .addClass("thumb")
+                .attr("id", id)
+                .attr("title", d.toLocaleTimeString())
+              $("div#container").append(img)
+            }
+
+              window.setTimeout( 
+                function()
+                {
+                  $("div#container").css( "display", "block")
+                },
+                4000
+              )
+          }
+          else if(data["action"] == "gifify")
+          {
+            $("img#gif").attr('src', "/cassini/"+data['url'])
+          }
+
+        }
+				//window.setTimeout(100000, update_graph);
+
+      }
+
+			IMNUM=1
+      var MST = 7*3600*1000
+
+      function fullImage(url, timestamp)
+      {
+        if(IMNUM == 1)
+        {
+          $("img#img1").attr('src', url)
+          IMNUM=2;
+        }
+        else if(IMNUM == 2)
+        {
+          $("img#img2").attr('src', url)
+          IMNUM=1; 
+          $("img.thumb").each(function(data) 
+          {
+            let imtime = parseInt($(this).attr("id"));
+            if( timestamp > imtime )
+            {
+              //$(this).css("display", "none");
+            }
+          })
+
+        }
+      }
+      
+      function gifify(websocket)
+      {
+        this.imnum = 0;
+        this.imgs = [];
+        this.websocket=websocket
+      }
+
+      gifify.prototype.imgClicked = function( url, timestamp)
+      {
+        console.log(this.imnum, timestamp)
+        this.imgs[this.imnum] = {url:url, timestamp:timestamp};
+
+        $("img#img"+this.imnum).attr('src', url);
+
+        if( this.imnum === 1 )
+        {
+          let msg = { action:"gifify", timestamps:this.imgs }
+          this.websocket.send(JSON.stringify(msg))
+        }
+
+        this.imnum = (this.imnum+1)%2;
+
+      }
+
+     </script>
+  {% end %} 
+
+
+  {% block body_main %}
+    <div id="container" style="display:none">	
+
+		</div>
+    <div id="main_images">
+      <img class="main_images" id="img0" height="300px" width="400px"></img>
+      <img class="main_images" id="gif" height="300px" width="400px"></img>
+      <img class="main_images" id="img1" height="300px" width="400px"></img>
+    </div>
+  {% end %}

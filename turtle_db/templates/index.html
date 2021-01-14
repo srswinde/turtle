@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %} GIF Maker {% end %}
+{% block head %}
+
+		<script src="{{ static_url('js/plotly-latest.min.js') }}"></script>
+    <style>
+      div#container
+      {
+        padding:10px;
+      }
+			div#top	
+		  {
+				display:flex;
+				justify-content:center;
+			}
+			div#plot_container
+			{
+				padding-left:50%;
+				margin-left:-500px;
+				padding-top:20px;
+			}
+			div#conditions
+			{
+				display:inline-block;
+				padding: 20px;
+			}
+			div#plot
+			{		
+			}
+    </style>
+    <script>
+			DATA = null;
+      function main()
+      {
+				
+        var ws = new WebSocket("wss://"+document.location.host+"/cassini/websocket")
+        ws.onmessage = function(msg)
+        {
+          data = JSON.parse(msg.data)
+          $('h2#temp').html(Math.round(data['temp']*10)/10+"&deg F")
+					if(data['temp'] > 90 )
+					{
+						$('h2#temp').css('color', 'red')
+					}
+					else if(data['temp'] < 65 )
+						$('h2#temp').css('color', 'blue')
+
+					$('h2#humid').html(Math.round(data['humid'])+" %")
+					var plot = document.getElementById('plot');
+
+					DATA['timestamp'].push( data["timestamp"] );
+					DATA['temp'].push( data["temp"] );
+					DATA['humid'].push( data["humid"] );
+
+					
+					Plotly.react(plot, [{
+						x: DATA['timestamp'].map(function(val) {return new Date(val*1000)}),
+						y: DATA["temp"]}], {
+						margin: { t: 0 } })
+					console.log( DATA['timestamp'][DATA['timestamp'].length-1])
+					console.log( DATA['temp'][DATA['timestamp'].length-1])
+
+				}
+				window.setTimeout(100000, update_image);
+				//window.setTimeout(100000, update_graph);
+				
+
+				$.ajax({
+					url:"/cassini/db/recent",
+					
+				}).done(function(data) {
+					DATA = data;
+					var plot = document.getElementById('plot');
+					Plotly.newPlot( plot, [{
+						x: DATA['timestamp'].map(function(val) {return new Date(val*1000)}),
+						y: DATA["temp"]}], {
+						margin: { t: 0 } } );
+				
+				})
+
+      }
+			function update_image()
+			{
+				$("img#mainpic").attr('src', "{{ static_url('turtle/latest/latest.jpg') }}")
+				window.setTimeout(100000, update_image);
+			}
+
+			function update_graph()
+			{
+					$.ajax({
+					url:"/cassini/db/last",
+					
+				}).done(function(data) {
+					console.log(data);
+					DATA['timestamp'].push(data['timestamp']);
+					DATA['temp'].push(data['temp']);
+          $('h2#temp').html(Math.round(data['temp']*10)/10+"&deg F")
+					$('h2#humid').html(Math.round(data['humid'])+" %")
+					var plot = document.getElementById('plot');
+					Plotly.newPlot( plot, [{
+						x: DATA['timestamp'],
+						y: DATA["temp"]}], {
+						margin: { t: 0 } } );
+						//window.setTimeout(100000, update_graph);
+				})
+			}
+
+     </script>
+     {% end %}
+
+  {% block body_main %}
+    <div id="container">	
+			<div id="top">
+				<img id="mainpic" src="{{ static_url('turtle/latest/latest.jpg') }}" height="500px" />
+				
+				<div id="conditions" style="display:inline-block">
+					<label for="#temp"> Current Temperature</label>
+					<h2 id="temp">
+						{{ last['temp'] }}
+<!--
+						<div class="spinner-border" role="status">
+							<span class="sr-only">Loading...</span>
+						</div>-->
+					</h2>	
+
+					<label for="#humid"> Current Humidity </label>
+					 <h2 id="humid">
+						{{ last['humid'] }}
+<!--						<div class="spinner-border" role="status">
+							<span class="sr-only">Loading...</span>
+						</div>-->
+					</h2>
+				</div>
+			</div>
+			<hr/>
+			<div id="plot_container">
+					<div id="plot" style="width:1000px;height:350px;">
+    </div>
+		</div>
+		</div>
+
+  {% end %}
+
