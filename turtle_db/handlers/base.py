@@ -2,7 +2,7 @@
 
 import tornado.web
 import tornado.websocket
-from ..db import conditions
+from ..db import conditions, get_rand_images, update_image, HAS_TURTLE
 from ..image_utils import collect_images, collect_thumbnails, convert
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import desc
@@ -10,6 +10,12 @@ import datetime
 import json
 import redis
 from pathlib import Path
+from ..lights import pixels
+import os
+from dateutil import parser
+import pandas as pd
+import re
+
 
 WEBCONNS = []
 
@@ -17,13 +23,16 @@ def get_connections():
     return WEBCONNS
 
 class MainHandler(tornado.web.RequestHandler):
+    name="Home"
 
     @property
     def navbar(self):
         return [
                 ("Home", "/cassini/"),
                 ("Gallery", "/cassini/history.html"),
-                ("Gifs", "/cassini/gifs.html")
+                ("Gifs", "/cassini/gifs.html"),
+                ("Lights", "/cassini/lights.html"),
+                ("Detect", "/cassini/detect")
 
                 ]
 
@@ -39,13 +48,11 @@ class MainHandler(tornado.web.RequestHandler):
 
         pageinfo = dict(
                    last=json.loads(data), 
-                    isActive="Home", 
-                    navbar=self.navbar
                 )
 
         if isMobile:
             self.render(
-                    'mobile/index.html', 
+                    'index.html', 
                     **pageinfo
                )
 
@@ -55,8 +62,24 @@ class MainHandler(tornado.web.RequestHandler):
                     **pageinfo
                )
 
+    def render(self, template, *args, **kwargs):
+
+        isMobile=False
+        if "Mobile" in self.request.headers['User-Agent']:
+            isMobile = True
+
+        super().render(
+                template, 
+                *args, 
+                isMobile=isMobile, 
+                navbar=self.navbar, 
+                isActive=self.name, 
+                **kwargs)
+
+
 
 class HistoryHandler(MainHandler):
+    name = "Gallery"
 
     # @tornado.web.authenticated
     def get(self): 
@@ -66,21 +89,24 @@ class HistoryHandler(MainHandler):
             isMobile = True
 
         if isMobile:
-            self.render('mobile/history.html', isActive="Gallery", navbar=self.navbar)
+            self.render('mobile/history.html' )
         else:
-            self.render('history.html', isActive="Gallery", navbar=self.navbar)
+            self.render('history.html', )
 
 
 
 class GifHandler(MainHandler):
+    name='Gifs'
 
     # @tornado.web.authenticated
     def get(self):
         gifpath = Path("/mnt/turtle/cache/gifs")
+        dirs = list(gifpath.iterdir())[-10:]
 
-        self.render('gifs.html', isActive="GIFs", navbar=self.navbar, gifs=gifpath.iterdir())
+        self.render('gifs.html', gifs=reversed(dirs) )
 
 class Data(MainHandler):
+
 
     def get(self, *args):
 
@@ -124,7 +150,13 @@ class Websocket(tornado.websocket.WebSocketHandler):
     def open(self):
         r = redis.Redis()
         data = r.get("turtle_conditions")
-        self.write_message(data)
+        newimage = r.get("home_image")
+        print(f"newimage is {newimage}")
+        alldata = {"temp":json.loads(data)}
+        alldata["home_image"] = json.loads(newimage)
+        alldata["home_image"]["name"] = alldata["home_image"]["name"].replace("/mnt/turtle", "staticturtle")
+        self.write_message(json.dumps(alldata))
+
         WEBCONNS.append(self)
 
     
@@ -249,3 +281,65 @@ class Test(MainHandler):
         
         self.write(dict(self.request.headers))
 
+class Lights(MainHandler):
+    name = "Lights"
+    p=pixels()
+    async def get(self):
+        r=self.get_argument('r', None)
+        g=self.get_argument('g', None)
+        b=self.get_argument('b', None)
+        w=self.get_argument('w', None)
+
+
+        print('We got data')
+
+        if r:
+            await self.p.r(int(r))
+        if g:
+            await self.p.g(int(g))
+        if b:
+            await self.p.b(int(b))
+        if w:
+            await self.p.w(int(w))
+
+        self.render(
+                    'lights.html', 
+               )
+
+
+class DetectHandler(MainHandler):
+    name = "Detect"
+    async def get(self):
+        argre = re.compile(r"\d{8,12}")
+       
+        for arg in self.request.arguments:
+            if argre.match(arg) and self.get_argument(arg) in ["0", "1"]:
+                hasTurtle = int(self.get_argument(arg))
+                dt = datetime.datetime.fromtimestamp(int(arg))
+                if hasTurtle:
+                    hasTurtle = HAS_TURTLE.YES
+                else:
+                    hasTurtle = HAS_TURTLE.NO
+                    
+                print(dt, hasTurtle)
+                update_image(int(arg), hasTurtle)
+            else:
+                print(dt, self.get_argument(arg), "bad")
+                
+                
+        imgs = get_rand_images()
+        imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+        
+        self.render(
+                'detect.html',
+                imgs=imgs,
+        
+                )
+
+class ImageHandler(tornado.web.StaticFileHandler):
+    def initialize(self, **kwargs):
+        super().initialize(**kwargs)
+        self.dirname = "/mnt/turtle/imgs/"
+        
+    def get_absolute_path(self, root, path):
+        return os.path.join(self.dirname, path)

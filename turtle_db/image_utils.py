@@ -61,16 +61,20 @@ def collect_images(start, delta=datetime.timedelta(minutes=30), limit=None):
     month = start.strftime("%b")
     day = start.strftime("%d")
     path = IMGPATH/year/month/day
-    images = [ p for p in path.iterdir() if p.suffix == '.jpg']
-    dts = map(
-            lambda dt: datetime.datetime.fromtimestamp(int(dt.name.replace(dt.suffix, ''))),
-            images
-            )
-    df = pd.DataFrame({"path":images})
-    df.index = dts
-    df=df[df.index > start]
-    df=df[df.index < (start+delta)]
-
+    if path.exists():
+        images = [ p for p in path.iterdir() if p.suffix == '.jpg']
+        dts = map(
+                lambda dt: datetime.datetime.fromtimestamp(int(dt.name.replace(dt.suffix, ''))),
+                images
+                )
+        df = pd.DataFrame({"path":images})
+        df.index = dts
+        df=df[df.index > start]
+        df=df[df.index < (start+delta)]
+    else:
+        df = pd.DataFrame({"path":[]})
+        df.index = pd.DatetimeIndex([])
+        
     if limit:
         sl = len(df)//limit
 

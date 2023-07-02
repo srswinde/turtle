@@ -29,9 +29,14 @@
   </head>
     <body onload="main()">
 
+    {% if isMobile %}
+      {% set size = "xxx-large" %}
+    {% else %}
+      {% set size = "large" %}
+    {% end %}
 
 <nav class="navbar navbar-expand-lg navbar-light bg-light">
-  <a class="navbar-brand" href="/cassini/">
+  <a class="navbar-brand" href="/cassini/" style="font-size:{{ size }}">
     <img src="{{ static_url("turtle-icon.png") }}" width="30" height="30" alt=""/>
     Cassini
   </a>
@@ -42,7 +47,7 @@
     <ul class="navbar-nav">
       {% for item in navbar %}
       <li class="nav-item{% if isActive == item[0] %} active {% end %}">
-        <a class="nav-link" href="{{ item[1] }}">{{ item[0] }}<span class="sr-only">(current)</span></a>
+        <a class="nav-link" href="{{ item[1] }}" style="font-size:{{ size }}">{{ item[0] }}<span class="sr-only">(current)</span></a>
       </li> 
       {% end %}
 
