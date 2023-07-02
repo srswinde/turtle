@@ -1,0 +1,8 @@
+# Local development dependencies go here
+-r base.txt
+coverage
+flake8
+mock
+pydocstyle
+pylint
+Sphinx
