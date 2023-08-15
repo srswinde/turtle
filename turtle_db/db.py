@@ -49,6 +49,11 @@ class probabilities(Base):
     timestamp=Column(Integer, primary_key=True)
     prob=Column(Float)
 
+class detections(Base):
+    
+    __tablename__="detections"
+    timestamp=Column(Integer, primary_key=True)
+    hasTurtle=Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
 
 def build_imagedb():
     root_dir = Path('/mnt/turtle/imgs/2023')
@@ -92,6 +97,28 @@ def get_rand_images(num=20):
 
     return rows
 
+def get_prob_images(low, high, num=50, recent=False, null=True):
+    session = mksession()
+    july = datetime.datetime(2023, 7, 1, 0, 0, 0).timestamp()
+    qry = session.query(probabilities, images)\
+        .filter(probabilities.timestamp > july)\
+        .filter(probabilities.prob > low)\
+        .filter(probabilities.prob < high)\
+        .join(images, probabilities.timestamp == images.timestamp)
+    if null:
+        qry = qry.filter(images.hasTurtle == HAS_TURTLE.NULL)
+    if recent:
+        qry = qry.order_by(desc(probabilities.prob)).limit(num)
+    else:
+        qry = qry.order_by(func.rand()).limit(num)
+        
+    df = pd.read_sql(qry.statement, qry.session.bind)
+    df.index = pd.to_datetime(df.timestamp, unit='s')
+    
+    return df
+    
+                        
+    
 
 def update_image(timestamp, hasTurtle):
     session = mksession()

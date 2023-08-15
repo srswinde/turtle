@@ -15,4 +15,5 @@ url_patterns = [
     (r'/cassini/lights.html', base.Lights),
     (r'/cassini/image_files/(.*)', base.ImageHandler, {'path': '/'}),
     (r'/cassini/detect', base.DetectHandler),
+    (r'/cassini/recent_detect', base.RecentDetectHandler)
 ]

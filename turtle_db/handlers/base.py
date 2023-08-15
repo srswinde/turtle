@@ -2,7 +2,7 @@
 
 import tornado.web
 import tornado.websocket
-from ..db import conditions, get_rand_images, update_image, HAS_TURTLE
+from ..db import conditions, get_rand_images, update_image, HAS_TURTLE, get_prob_images
 from ..image_utils import collect_images, collect_thumbnails, convert
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import desc
@@ -77,6 +77,30 @@ class MainHandler(tornado.web.RequestHandler):
                 **kwargs)
 
 
+
+class RecentDetectHandler(MainHandler):
+    
+    def get(self):
+        imgs = get_prob_images(0.7, 1.0, 10, recent=True, null=False)
+        imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+        imgstr = ""
+        for img in imgs.itertuples():
+            datestr = datetime.datetime.fromtimestamp(img.timestamp).strftime("%Y%m%dT%H%M%S")
+            imgstr += f"<img src='{img.url}' width='100%' title='{datestr}'/>"
+            
+        htmlstr = f"""
+        <html>
+        <head>
+        <title>Recent Turtle Detections</title>
+        </head>
+        <body>
+        <h1>Recent Turtle Detections</h1>
+        {imgstr}
+        </body>
+        </html>
+        """
+        self.write(htmlstr)
+        
 
 class HistoryHandler(MainHandler):
     name = "Gallery"
@@ -327,7 +351,7 @@ class DetectHandler(MainHandler):
                 print(dt, self.get_argument(arg), "bad")
                 
                 
-        imgs = get_rand_images(200)
+        imgs = get_prob_images(0.7, 1.0, 10, recent=True)
         imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
         
         self.render(
