@@ -13,8 +13,7 @@ import datetime
 import datetime
 
 
-engine = create_engine("mysql+pymysql://scott:scott@192.168.0.148/turtle")
-Base = declarative_base(bind=engine)
+Base = declarative_base()
 
 
 class conditions(Base):
@@ -85,7 +84,8 @@ def update_image(timestamp, hasTurtle):
 
 def mksession():
 
-    session = sessionmaker(bind=conditions.metadata.bind)()
+    engine = create_engine("mysql+pymysql://scott:scott@192.168.0.148/turtle")
+    session = sessionmaker(bind=engine)()
     return session
 
 
@@ -125,3 +125,4 @@ def gather_classified_images():
     rows['url'] = rows.path.apply(lambda x: x.replace('/mnt/turtle', 'staticturtle'))
 
     return rows
+
