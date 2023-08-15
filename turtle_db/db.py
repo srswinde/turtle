@@ -12,8 +12,7 @@ import pandas as pd
 import datetime
 
 
-engine = create_engine("mysql+pymysql://scott:scott@192.168.0.148/turtle")
-Base = declarative_base(bind=engine)
+Base = declarative_base()
 TEST_CASE = True
 
 class conditions(Base):
@@ -53,7 +52,7 @@ class probabilities(Base):
 
 def build_imagedb():
     root_dir = Path('/mnt/turtle/imgs/2023')
-    session = mksession()
+    session = mksession(bind=engine)
     rows = []
     
     first = session.query(images).order_by(desc(images.timestamp)).first()
@@ -104,7 +103,8 @@ def update_image(timestamp, hasTurtle):
 
 def mksession():
 
-    session = sessionmaker(bind=conditions.metadata.bind)()
+    engine = create_engine("mysql+pymysql://scott:scott@192.168.0.148/turtle")
+    session = sessionmaker(bind=engine)()
     return session
 
 
