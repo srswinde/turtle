@@ -1,7 +1,7 @@
 
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, Float, String, Enum, insert
+from sqlalchemy import Column, Integer, Float, String, Enum, insert, desc, and_
 from sqlalchemy import create_engine
 from sqlalchemy.sql import func
 from sqlalchemy.orm import sessionmaker
@@ -10,12 +10,11 @@ from pathlib import Path
 from pymysql.err import IntegrityError
 import pandas as pd
 import datetime
-import datetime
 
 
 engine = create_engine("mysql+pymysql://scott:scott@192.168.0.148/turtle")
 Base = declarative_base(bind=engine)
-
+TEST_CASE = True
 
 class conditions(Base):
 
@@ -44,13 +43,27 @@ class images(Base):
     timestamp=Column(Integer, primary_key=True)
     path=Column(String(255))
     hasTurtle=Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
+    
+class probabilities(Base):
+    
+    __tablename__="probabilities"
+    timestamp=Column(Integer, primary_key=True)
+    prob=Column(Float)
 
 
 def build_imagedb():
-    root_dir = Path('/mnt/turtle/imgs')
+    root_dir = Path('/mnt/turtle/imgs/2023')
     session = mksession()
     rows = []
+    
+    first = session.query(images).order_by(desc(images.timestamp)).first()
+    last_image = first.timestamp if first else 0
+        
+    
+    
     for ii, img in enumerate(root_dir.glob('**/*.jpg')):
+        if int(img.stem) <= last_image:
+            continue
         try:
             ts = int(img.stem)
         except ValueError:
@@ -65,10 +78,16 @@ def build_imagedb():
             rows = []
 
 
-def get_rand_images(num=10):
+def get_rand_images(num=20):
 
     session = mksession()
-    qry = session.query(images).filter(images.hasTurtle == HAS_TURTLE.NULL).order_by(func.rand()).limit(num)
+    qry = session.query(images)\
+        .filter(images.hasTurtle == HAS_TURTLE.NULL)\
+            .filter(images.timestamp > 1685602800)\
+                .filter(and_(
+                    func.extract('hour', func.from_unixtime(images.timestamp)) > 15,
+                    func.extract('hour', func.from_unixtime(images.timestamp)) < 24)
+                    ).order_by(images.timestamp).limit(num)
     rows = pd.read_sql(qry.statement, qry.session.bind)
     rows.index = pd.to_datetime(rows.timestamp, unit='s')
 

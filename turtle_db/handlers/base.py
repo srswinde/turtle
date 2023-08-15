@@ -327,7 +327,7 @@ class DetectHandler(MainHandler):
                 print(dt, self.get_argument(arg), "bad")
                 
                 
-        imgs = get_rand_images()
+        imgs = get_rand_images(200)
         imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
         
         self.render(
