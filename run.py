@@ -23,6 +23,7 @@ import datetime
 from pathlib import Path
 import aiohttp
 from pyindi.webclient import INDIWebApp, INDIHandler
+from turtle_db import db
 
 
 
@@ -34,14 +35,16 @@ class INDIMainPage(INDIHandler):
 def handle_blob(blob):
     dtnow = datetime.datetime.now()
     now=int(time.time())
+    imname = f'{now}.jpg'
     remote_nowpic = Path('/mnt/turtle/imgs')
     remote_nowpic/= dtnow.strftime("%Y")
     remote_nowpic/= dtnow.strftime("%b")
     remote_nowpic/= dtnow.strftime("%d")
     remote_nowpic.mkdir(parents=True, exist_ok=True)
-    remote_nowpic/=f'{now}.jpg'
+    remote_nowpic/=imname
     remote_nowpic = str(remote_nowpic)
     nowpic = Path('/mnt/turtle/latest/latest.jpg')
+
 
     with open(remote_nowpic, 'wb') as archive:
         archive.write(blob['data'])
@@ -49,6 +52,12 @@ def handle_blob(blob):
     with open(nowpic, 'wb') as latest:
         latest.write(blob['data'])
 
+    row = db.images(path=str(remote_nowpic), timestamp=now, hasTurtle=db.HAS_TURTLE.NULL)
+    session = db.mksession()
+    session.add(row)
+    print(f"Adding row f{dtnow}")
+    session.commit()
+    
     rconn = redis.Redis(host="localhost")
     data = {
             "time": dtnow.ctime(),
