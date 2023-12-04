@@ -200,128 +200,108 @@
 		</script>
 
     <script>
-			DATA = null;
-      LATEST_IMAGES=[];
-      THIS_IMAGE = 0;
-      function init()
-      {
-				
-        var ws = new WebSocket("wss://"+document.location.host+"/cassini/websocket")
-        ws.onmessage = function(msg)
+		DATA = null;
+        LATEST_IMAGES=[];
+        THIS_IMAGE = 0;
+        function init()
         {
-
-          data = JSON.parse(msg.data)
-          if("temp" in data)
-          {
-            $('h2#temp').html(Math.round(data['temp']['temp']*10)/10+"&deg F")
-            if(data['temp']['temp'] > 90 )
-            {
-              $('h2#temp').css('color', 'red')
-            }
-            else if(data['temp']['temp'] < 65 )
-              $('h2#temp').css('color', 'blue')
-            $('h2#humid').html(Math.round(data['temp']['humid'])+" %")
-            var plot = document.getElementById('plot');
-            if(DATA ===  null)
-            {
-              DATA={};
-              return;
-            }
-            DATA['timestamp'].push( data['temp']["timestamp"] );
-            DATA['temp'].push( data['temp']["temp"] );
-            DATA['humid'].push( data['temp']["humid"] );
-
-            
-            Plotly.react(plot, [{
-              x: DATA['timestamp'].map(function(val) {return new Date(val*1000)}),
-              y: DATA["temp"]}], {
-              margin: { t: 0 } })
-            console.log( DATA['timestamp'][DATA['timestamp'].length-1])
-            console.log( DATA['temp'][DATA['timestamp'].length-1])
-          }
-          if("home_image" in data)
-          { 
-            let len = LATEST_IMAGES.length
-            if(len < 3)
-            {
-              LATEST_IMAGES[len] = data["home_image"];
-            }
-
-            else
-            {
-              LATEST_IMAGES.shift(data["home_image"])
-            }
-
-            $("img#mainpic").attr('src', data['home_image']['name']);
-            $("h2#imagets").text(data['home_image']['time'])
-          }
-          else if("backyard_image" in data)
-          {
-            console.log("BACKYARD IMAGE")
-            console.log(data['backyard_image']['name'])
-            $("img#backpic").attr('src', data['backyard_image']['name']);
-          }
-          else if("tanspot_image" in data)
-          {
-            console.log(data['tanspot_image']['name'])
-            $("img#tanspot").attr('src', data['tanspot_image']['name']);
-          }
-
-
-				}
-        console.log("calling update_image now")
-        update_image()
-				//window.setTimeout(100000, update_graph);
 				
+            var ws = new WebSocket("wss://"+document.location.host+"/cassini/websocket")
+            ws.onmessage = function(msg)
+            {
 
-				$.ajax({
-					url:"/cassini/db/recent",
-					
-				}).done(function(data) {
-					DATA = data;
-					var plot = document.getElementById('plot');
-					Plotly.newPlot( plot, [{
-						x: DATA['timestamp'].map(function(val) {return new Date(val*1000)}),
-						y: DATA["temp"]}], {
-						margin: { t: 0 } } );
-				
-				})
+                data = JSON.parse(msg.data)
+                if("temp" in data)
+                {
+                    $('h2#temp').html(Math.round(data['temp']['temp']*10)/10+"&deg F")
+                    if(data['temp']['temp'] > 90 )
+                    {
+                    $('h2#temp').css('color', 'red')
+                    }
+                    else if(data['temp']['temp'] < 65 )
+                    $('h2#temp').css('color', 'blue')
+                    $('h2#humid').html(Math.round(data['temp']['humid'])+" %")
+                    var plot = document.getElementById('plot');
+                    if(DATA ===  null)
+                    {
+                    DATA={};
+                    return;
+                    }
+                    DATA['timestamp'].push( data['temp']["timestamp"] );
+                    DATA['temp'].push( data['temp']["temp"] );
+                    DATA['humid'].push( data['temp']["humid"] );
 
-      }
-			function update_image()
-			{
+                    
+                    Plotly.react(plot, [{
+                    x: DATA['timestamp'].map(function(val) {return new Date(val*1000)}),
+                    y: DATA["temp"]}], {
+                    margin: { t: 0 } })
+                    console.log( DATA['timestamp'][DATA['timestamp'].length-1])
+                    console.log( DATA['temp'][DATA['timestamp'].length-1])
+                }
+                if("home_image" in data)
+                { 
+                    let len = LATEST_IMAGES.length
 
-        if(THIS_IMAGE > 2)
-          THIS_IMAGE = 0
-        len = LATEST_IMAGES.length
-        now = new Date()
-        
+                    $("img#mainpic").attr('src', data['home_image']['name']);
+                    if(len < 3)
+                    {
+                        LATEST_IMAGES[0] = data["home_image"];
+                    }
 
-        if(len != 0)
-        { 
-          if( (LATEST_IMAGES.length-1) < THIS_IMAGE )
-            THIS_IMAGE = 0;
-          console.log("THIS_IMAGE is ", LATEST_IMAGES.length-1, THIS_IMAGE )
-          console.log(len)
-          secsago = now.getTime()/1000 - LATEST_IMAGES[len-1]["timestamp"]
-          console.log(secsago)
-          if(secsago <= 60.0)
-            $("h2#imagets").text(Math.round(secsago) + " Seconds Ago")
-          else
-            $("h2#imagets").text(Math.round(secsago/60) + " Minutes Ago")
+                    else
+                    {
+                        LATEST_IMAGES.shift(data["home_image"])
+                    }
 
-          $("img#mainpic").attr('src', LATEST_IMAGES[len-1]['name']);
+                    $("img#mainpic").attr('src', data['home_image']['name']);
+                    $("h2#imagets").text(`Latest Image (${data['home_image']['time']})`)
+                }
+                else if("backyard_image" in data)
+                {
+                    console.log("BACKYARD IMAGE")
+                    console.log(data['backyard_image']['name'])
+                    $("img#backpic").attr('src', data['backyard_image']['name']);
+                }
+                else if("tanspot_image" in data)
+                {
+                    console.log(data['tanspot_image']['name'])
+                    $("img#tanspot").attr('src', data['tanspot_image']['name']);
+                }
 
-        }
-        THIS_IMAGE++;
-				setTimeout(update_image, 1000);
 
-			}
+            }
+                    
+
+            $.ajax({
+                url:"/cassini/db/images/recent",
+                
+            }).done(function(data) {
+                var plot = document.getElementById('plot');
+                Plotly.newPlot( plot, [{
+                    x: data['timestamp'].map(function(val) {return new Date(val*1000)}),
+                    y: data["prob"], 
+                    mode: 'markers'
+                    }], 
+                    {
+                        //margin: { t: 0 },
+                    } 
+                );
+                document.getElementById('plot').on('plotly_click', function(data){
+                    var point = data.points[0];
+                    var idx = point.pointIndex;
+                    console.log(point.data.x[idx]);
+                    recent_detect(point.data.x[idx])
+                });
+            })
+
+            }
+
 
 			function update_graph()
 			{
 					$.ajax({
-					url:"/cassini/db/last",
+					url:"/cassini/db/images/recent",
 					
 				}).done(function(data) {
 					DATA['timestamp'].push(data['timestamp']);
@@ -336,49 +316,114 @@
 						//window.setTimeout(100000, update_graph);
 				})
 			}
+        $.ajax(
+        {
+            url:"/cassini/detect_intervals?hoursAgo=72",
+        }).done(function(data){
+            $("#detections").html("")
+            for(var bin of data['bins'])
+            {
+            const weekday = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+            var date = new Date(bin);
+            var day = weekday[date.getDay()];
+            var time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`
+            $("#detections").append(`<button class="btn btn-primary btn-lg" onclick="recent_detect(new Date('${bin}'))">${day} ${time}</button>`)
+                start = new Date(bin[0]*1000);
+                end = new Date(bin[1]*1000);
+                console.log(start)
+            }
+        })
+        function recent_detect(ts)
+        {
+            console.log(ts)
+            ts = ts.getTime()/1000;
+            $.ajax({
+            url:`/cassini/recent_detect?ts=${ts}`,
+            }).done(function(data) {
+                console.log(data['imgs']);
+                var imgs = data['imgs'];
+                console.log(imgs.length);
+                for(var i=0; (i<imgs.length) && (i<9); i++)
+                {
+                    var img = imgs[i];
+                    var url = img.url;
+                    var prob = img.prob;
+                    console.log(`url: ${url} prob: ${prob}`)
+                    var imgtag = document.getElementById(`img${i}`);
+                    imgtag.src = url;
+                    imgtag.title = `Probability: ${prob} @ ${new Date(imgs[i].timestamp*1000)}`;
+                    
+                }
+                
+            })
+        }
 
      </script>
      {% end %}
 
   {% block body_main %}
     <div id="container">	
-			<div id="top">
+		<div>
         <div>
-          <!--<img id="mainpic" src="{{ static_url('turtle/latest/latest.jpg') }}" height="425px" />-->
           <img id="cassini" src="{{ static_url('turtle/latest/latest.jpg') }}" height="425px" />
-        <br>
-        <!--<img id="backpic" src="{{ static_url('turtle/imgs/backyard/latest.jpg') }}" height="425px" />-->
+            
+            <script>
+            </script>
         </div>
 				<div id="conditions" style="display:inline-block">
 
-					<label for="#imagets"> Image Taken: </label>
           <h2 id="imagets">
             ...
           </h2>
-					<label for="#temp"> Current Temperature</label>
-					<h2 id="temp">
-						{{ last['temp'] }}
-<!--
-						<div class="spinner-border" role="status">
-							<span class="sr-only">Loading...</span>
-						</div>-->
-					</h2>	
 
-					<label for="#humid"> Current Humidity </label>
-					 <h2 id="humid">
-						{{ last['humid'] }}
-<!--						<div class="spinner-border" role="status">
-							<span class="sr-only">Loading...</span>
-						</div>-->
-					</h2>
-          <img id="tanspot" src="{{ static_url('turtle/imgs/tanspot/latest.jpg') }}" />
-          <br>
-          <div id="plot_container">
-  					<div id="plot" style="width:700px;height:350px;"></div>
-	    	  </div>
 
-				</div>
+		</div>
+
+   
+                    
+            <div id="plot_container">
+  				<div id="plot" style="width:700px;height:350px;"></div>
+	    	</div>
+            <div>
+            <h1> Recent Cassini Sightings </h1>
+            <div id="detections" style="max-width:680px"></div>
+                <table>
+                    <tr>
+                        <td>
+                            <img src="", height="160", width="213" id="img0">
+                        </td>
+                        <td>
+                            <img src="", height="160", width="213" id="img1">
+                        </td>
+                        <td>
+                            <img src="", height="160", width="213" id="img2">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <img src="", height="160", width="213" id="img3">
+                        </td>
+                        <td>
+                            <img src="", height="160", width="213" id="img4">
+                        </td>
+                        <td>
+                            <img src="", height="160", width="213" id="img5">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <img src="", height="160", width="213" id="img6">
+                        </td>
+                        <td>
+                            <img src="", height="160", width="213" id="img7">
+                        </td>
+                        <td>
+                            <img src="", height="160", width="213" id="img8">
+                        </td>
+                </table>
+            </div>
 			</div>
+
 		</div>
 
   {% end %}
