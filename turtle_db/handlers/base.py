@@ -3,9 +3,10 @@
 import tornado.web
 import tornado.websocket
 from ..db import conditions, get_rand_images, update_image, HAS_TURTLE, get_prob_images
+from ..db import mksession, images, probabilities
 from ..image_utils import collect_images, collect_thumbnails, convert
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import desc
+from sqlalchemy import and_
+from sqlalchemy import desc, func
 import datetime
 import json
 import redis
@@ -16,14 +17,16 @@ from dateutil import parser
 import pandas as pd
 import re
 
-
 WEBCONNS = []
+
 
 def get_connections():
     return WEBCONNS
 
+
 class MainHandler(tornado.web.RequestHandler):
-    name="Home"
+
+    name = "Home"
 
     @property
     def navbar(self):
@@ -39,7 +42,7 @@ class MainHandler(tornado.web.RequestHandler):
     # @tornado.web.authenticated
     def get(self):
 
-        isMobile=False
+        isMobile = False
         if "Mobile" in self.request.headers['User-Agent']:
             isMobile = True
 
@@ -47,12 +50,14 @@ class MainHandler(tornado.web.RequestHandler):
         data = r.get("turtle_conditions")
 
         pageinfo = dict(
-                   last=json.loads(data), 
+                   last=json.loads(data),
+
                 )
 
         if isMobile:
             self.render(
-                    'index.html', 
+                    'index.html',
+
                     **pageinfo
                )
 
@@ -64,109 +69,191 @@ class MainHandler(tornado.web.RequestHandler):
 
     def render(self, template, *args, **kwargs):
 
-        isMobile=False
+        isMobile = False
         if "Mobile" in self.request.headers['User-Agent']:
             isMobile = True
 
         super().render(
-                template, 
-                *args, 
-                isMobile=isMobile, 
-                navbar=self.navbar, 
-                isActive=self.name, 
+                template,
+                *args,
+                isMobile=isMobile,
+                navbar=self.navbar,
+                isActive=self.name,
                 **kwargs)
 
 
-
 class RecentDetectHandler(MainHandler):
-    
+
     def get(self):
-        imgs = get_prob_images(0.7, 1.0, 10, recent=True, null=False)
-        imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
-        imgstr = ""
-        for img in imgs.itertuples():
-            datestr = datetime.datetime.fromtimestamp(img.timestamp).strftime("%Y%m%dT%H%M%S")
-            imgstr += f"<img src='{img.url}' width='100%' title='{datestr}'/>"
+        ts = self.get_argument("ts", None)
+        print(ts)
+        prob = self.get_argument("prob", '0')
+        prob = float(prob)
+        if ts is None:
+            ts = datetime.datetime.now().timestamp()
+        else:
+            ts = int(ts)
+
+        session = mksession()
+        qry = session.query(images, probabilities)\
+            .join(images, images.timestamp == probabilities.timestamp)\
+            .filter(images.timestamp > ts-60)\
+            .order_by(images.timestamp).limit(9)
+        imgs = pd.read_sql(qry.statement, qry.session.bind)
+        imgs['url'] = imgs['path']\
+            .apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+        print(imgs)
+
+        self.finish(
+            {'imgs':
+
+                imgs[['prob', 'url', 'timestamp']].to_dict(orient="records")}
+        )
+
+
+class CassiniIntervals(MainHandler):
+    name = "Intervals"
+
+    def get(self):
+        session = mksession()
+        minprob = self.get_argument("minprob", '0.97')
+        minprob = float(minprob)
+        hoursAgo = self.get_argument("hoursAgo", '24')
+        before = datetime.datetime.now() - datetime.timedelta(hours=int(hoursAgo))
+        qry = session.query(func.from_unixtime(images.timestamp), images.path, images.hasTurtle, probabilities.prob)\
+            .join(images, images.timestamp == probabilities.timestamp)\
+            .filter(probabilities.prob > minprob)\
+            .filter(images.timestamp > before.timestamp())\
+            .filter(images.hasTurtle != HAS_TURTLE.NO)
             
-        htmlstr = f"""
-        <html>
-        <head>
-        <title>Recent Turtle Detections</title>
-        </head>
-        <body>
-        <h1>Recent Turtle Detections</h1>
-        {imgstr}
-        </body>
-        </html>
-        """
-        self.write(htmlstr)
+        df = pd.read_sql(qry.statement, qry.session.bind)
+        df.index = df.from_unixtime_1
+        lowbin = pd.Interval(pd.Timedelta(minutes=0), pd.Timedelta(minutes=5))
+
+        highbin = pd.Interval(pd.Timedelta(minutes=5), pd.Timedelta(minutes=48*60))
+        bins = pd.IntervalIndex([lowbin, highbin])
+        cut = pd.cut(df.from_unixtime_1.diff(), bins)
+        stasis = cut.eq(cut.shift())
+
+        prev_value = False
+        new_bins = []
+        for time, value in stasis.items():
+
+            if prev_value is False and value is True:
+                left = time
+
+            if prev_value is True and value is False:
+                idx = df.loc[left:time].prob.argmax()
+                ts = df.loc[left:time].iloc[idx].name
+                new_bins.append(ts)
+
+            prev_value = value
+
+        if left > ts:
+            new_bins.append(left)
+
+        yeses = []
+        for detect in new_bins:
+            for _,row in df[df['hasTurtle'] == HAS_TURTLE.YES].iterrows():
+                if (row.name - detect).total_seconds() > 300 and row.name not in yeses:
+                    yeses.append(row.name)
+                    
+        new_bins.extend(yeses)
+        self.finish({"bins": [str(ts) for ts in new_bins]})
         
+
 
 class HistoryHandler(MainHandler):
     name = "Gallery"
 
     # @tornado.web.authenticated
-    def get(self): 
+    def get(self):
 
-        isMobile=False
+        isMobile = False
         if "Mobile" in self.request.headers['User-Agent']:
             isMobile = True
 
         if isMobile:
-            self.render('mobile/history.html' )
+            self.render('mobile/history.html')
         else:
             self.render('history.html', )
 
 
-
 class GifHandler(MainHandler):
-    name='Gifs'
+    name = 'Gifs'
 
     # @tornado.web.authenticated
     def get(self):
         gifpath = Path("/mnt/turtle/cache/gifs")
         dirs = list(gifpath.iterdir())[-10:]
 
-        self.render('gifs.html', gifs=reversed(dirs) )
+        self.render('gifs.html', gifs=reversed(dirs))
 
-class Data(MainHandler):
 
+class DataTemperatures(MainHandler):
 
     def get(self, *args):
 
         if args[0] == 'recent':
-            self.write( self.get_recent() )
+            self.write(self.get_recent())
 
-        elif args[0] == 'last':
-            self.write( self.get_last() )
-
+        elif args[0] == 'latest':
+            self.write(self.get_last())
 
     def get_recent(self, minsago=60):
 
-        session=sessionmaker(bind=conditions.metadata.bind)()
+        session = mksession()
         recent = datetime.datetime.now().timestamp() - 24*60*minsago
-        resp=session.query(conditions).filter(conditions.timestamp >= recent)
-        timestamp,temp, humid = [],[],[]
+        resp = session.query(conditions).filter(conditions.timestamp >= recent)
+        timestamp, temp, humid = [], [], []
         for row in resp:
             timestamp.append(row.timestamp)
             temp.append(row.temperature_F)
             humid.append(row.relative_humidity)
         return {
-                    "timestamp":timestamp,
+                    "timestamp": timestamp,
                     "temp": temp,
-                    "humid":humid
+                    "humid": humid
                     }
 
-
     def get_last(self):
-        session=sessionmaker(bind=conditions.metadata.bind)()
-        resp=session.query(conditions).order_by(desc(conditions.timestamp)).first()
-        return { 
-                "timestamp":resp.timestamp,
+
+        session = mksession()
+        resp = session\
+            .query(conditions).order_by(desc(conditions.timestamp)).first()
+        return {
+                "timestamp": resp.timestamp,
                 "temp": resp.temperature_F,
-                "humid":resp.relative_humidity
+                "humid": resp.relative_humidity
                 }
 
+
+class DataImages(MainHandler):
+
+    def get(self, *args):
+        if args[0] == 'recent':
+            self.write(self.get_recent())
+
+        elif args[0] == 'latest':
+            self.write(self.get_last())
+
+    def get_recent(self, minsago=60):
+        session = mksession()
+        recent = datetime.datetime.now().timestamp() - 24*60*60
+        resp = session.query(images, probabilities)\
+            .join(images, images.timestamp == probabilities.timestamp)\
+            .filter(images.timestamp >= recent)
+        df = pd.read_sql(resp.statement, resp.session.bind)
+        df['url'] = df['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+        df['hasTurtle'] = df['hasTurtle'].apply(lambda x: x.value)
+
+        resp = {
+                "timestamp": df.timestamp.tolist(),
+                "url": df.url.tolist(),
+                "hasTurtle": df.hasTurtle.tolist(),
+                "prob": df.prob.tolist()
+        }
+        return resp
 
 
 class Websocket(tornado.websocket.WebSocketHandler):
@@ -176,14 +263,13 @@ class Websocket(tornado.websocket.WebSocketHandler):
         data = r.get("turtle_conditions")
         newimage = r.get("home_image")
         print(f"newimage is {newimage}")
-        alldata = {"temp":json.loads(data)}
+        alldata = {"temp": json.loads(data)}
         alldata["home_image"] = json.loads(newimage)
         alldata["home_image"]["name"] = alldata["home_image"]["name"].replace("/mnt/turtle", "staticturtle")
         self.write_message(json.dumps(alldata))
 
         WEBCONNS.append(self)
 
-    
     def on_close(self):
 
         WEBCONNS.remove(self)
@@ -203,20 +289,20 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
         except ValueError:
             error["badJSON"] = "Malformed JSON"
             self.write_message(error)
-            return 
+            return
 
         action = data['action']
         if "action" not in data:
             error["noAction"] = "Missing action keyword"
             self.write_message(error)
-            
+
         if action == "collect":
             start = data['start']
             delta = data['delta']
             limit = None
             if 'limit' in data:
                 limit = data['limit']
-            
+
             start = datetime.datetime(**start)
             delta = datetime.timedelta(**delta)
             imgs = await collect_thumbnails(start, delta)
@@ -233,7 +319,7 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
                             ))
 
             else:
-                jsondata=json.loads(
+                jsondata = json.loads(
                         urls.to_json(
                             default_handler=str,
                             orient="records"
@@ -250,15 +336,15 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
             if "limit" in data:
                 limit = int(data["limit"])
 
-            t0=data['timestamps'][0]["timestamp"]
-            t1=data['timestamps'][1]["timestamp"]
+            t0 = data['timestamps'][0]["timestamp"]
+            t1 = data['timestamps'][1]["timestamp"]
             MST = datetime.timedelta(hours=7)
-            t0=datetime.datetime.fromtimestamp(t0/1000) + MST
-            t1=datetime.datetime.fromtimestamp(t1/1000) + MST
+            t0 = datetime.datetime.fromtimestamp(t0/1000) + MST
+            t1 = datetime.datetime.fromtimestamp(t1/1000) + MST
             imgs = collect_images(t0, t1-t0)
             sl = len(imgs)//limit
             if sl < 1:
-                sl=1
+                sl = 1
             files = [str(imgs) for imgs in imgs.path[::sl]]
             t0string = t0.strftime("%Y%m%dT%H%M%S")
             t1string = t1.strftime("%Y%m%dT%H%M%S")
@@ -267,9 +353,10 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
             if outfile.exists():
                 resp["action"] = action
                 resp["error"] = error
-                resp["url"] = str(outfile).replace("/mnt/turtle", "staticturtle")
+                resp["url"] = str(outfile)\
+                    .replace("/mnt/turtle", "staticturtle")
                 self.write_message(resp)
-            
+
             else:
                 outfile.parent.mkdir(parents=True, exist_ok=True)
 
@@ -278,14 +365,9 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
                 print(outfile)
                 resp["action"] = action
                 resp["error"] = error
-                resp["url"] = str(outfile).replace("/mnt/turtle", "staticturtle")
+                resp["url"] = str(outfile)\
+                    .replace("/mnt/turtle", "staticturtle")
                 self.write_message(resp)
-
-
-
-            
-
-            
 
         else:
             error['badAction'] = "No such action" + action
@@ -302,18 +384,19 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
 class Test(MainHandler):
 
     def get(self):
-        
+
         self.write(dict(self.request.headers))
+
 
 class Lights(MainHandler):
     name = "Lights"
-    p=pixels()
-    async def get(self):
-        r=self.get_argument('r', None)
-        g=self.get_argument('g', None)
-        b=self.get_argument('b', None)
-        w=self.get_argument('w', None)
+    p = pixels()
 
+    async def get(self):
+        r = self.get_argument('r', None)
+        g = self.get_argument('g', None)
+        b = self.get_argument('b', None)
+        w = self.get_argument('w', None)
 
         print('We got data')
 
@@ -327,15 +410,18 @@ class Lights(MainHandler):
             await self.p.w(int(w))
 
         self.render(
-                    'lights.html', 
+                    'lights.html',
+
                )
 
 
 class DetectHandler(MainHandler):
+
     name = "Detect"
+
     async def get(self):
         argre = re.compile(r"\d{8,12}")
-       
+
         for arg in self.request.arguments:
             if argre.match(arg) and self.get_argument(arg) in ["0", "1"]:
                 hasTurtle = int(self.get_argument(arg))
@@ -344,26 +430,34 @@ class DetectHandler(MainHandler):
                     hasTurtle = HAS_TURTLE.YES
                 else:
                     hasTurtle = HAS_TURTLE.NO
-                    
+
                 print(dt, hasTurtle)
                 update_image(int(arg), hasTurtle)
-            else:
-                print(dt, self.get_argument(arg), "bad")
-                
-                
-        imgs = get_prob_images(0.7, 1.0, 10, recent=True)
-        imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+
+        nimages = self.get_argument('nimages', None)
+
+        if nimages:
+            nimages = int(nimages)
+        else:
+            nimages = 20
+        random = self.get_argument('random', None)
+        if random:
+            imgs = get_prob_images(0.0, 1.0, nimages, recent=True, null=True)
+        else:
+            imgs = get_prob_images(0.0, 1.0, nimages, recent=False, null=True)
         
+        imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+
         self.render(
                 'detect.html',
                 imgs=imgs,
-        
                 )
+
 
 class ImageHandler(tornado.web.StaticFileHandler):
     def initialize(self, **kwargs):
         super().initialize(**kwargs)
         self.dirname = "/mnt/turtle/imgs/"
-        
+
     def get_absolute_path(self, root, path):
         return os.path.join(self.dirname, path)

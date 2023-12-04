@@ -55,6 +55,14 @@ class detections(Base):
     timestamp=Column(Integer, primary_key=True)
     hasTurtle=Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
 
+def recreate():
+    md = db.Base.metadata
+    s = db.mksession()
+    md.bind = s.bind
+    md.create_all(s.bind)
+    s.close()
+
+
 def build_imagedb():
     root_dir = Path('/mnt/turtle/imgs/2023')
     session = mksession(bind=engine)
@@ -82,6 +90,13 @@ def build_imagedb():
             rows = []
 
 
+
+class underground_temp(Base):
+    
+    __tablename__="underground_temp"
+    timestamp=Column(Integer, primary_key=True)
+    temp=Column(Float)
+
 def get_rand_images(num=20):
 
     session = mksession()
@@ -102,15 +117,17 @@ def get_prob_images(low, high, num=50, recent=False, null=True):
     july = datetime.datetime(2023, 7, 1, 0, 0, 0).timestamp()
     qry = session.query(probabilities, images)\
         .filter(probabilities.timestamp > july)\
-        .filter(probabilities.prob > low)\
-        .filter(probabilities.prob < high)\
         .join(images, probabilities.timestamp == images.timestamp)
+    if recent:
+        qry = qry.order_by(desc(images.timestamp))
+    else:
+        qry = qry.order_by(func.rand())
+
     if null:
         qry = qry.filter(images.hasTurtle == HAS_TURTLE.NULL)
-    if recent:
-        qry = qry.order_by(desc(probabilities.prob)).limit(num)
-    else:
-        qry = qry.order_by(func.rand()).limit(num)
+    qry = qry.filter(probabilities.prob > low)\
+        .filter(probabilities.prob < high)\
+        .limit(num)
         
     df = pd.read_sql(qry.statement, qry.session.bind)
     df.index = pd.to_datetime(df.timestamp, unit='s')
@@ -171,3 +188,37 @@ def gather_classified_images():
     rows['url'] = rows.path.apply(lambda x: x.replace('/mnt/turtle', 'staticturtle'))
 
     return rows
+
+def detect_intervals():
+    session = mksession()
+    recent = datetime.datetime.now() - datetime.timedelta(hours=48)
+    print(recent)
+    qry = session.query(func.from_unixtime(images.timestamp), images.path, probabilities.prob)\
+        .join(probabilities, images.timestamp == probabilities.timestamp)\
+        .filter(images.timestamp> recent.timestamp())\
+        .filter(probabilities.prob > 0.9)
+    df = pd.read_sql(qry.statement, session.bind)
+    df.index = df.from_unixtime_1
+    return df
+
+def time_group(second_separator=300):
+    
+    session = mksession()
+    minprob = 0.97
+    hoursAgo = 24
+    before = datetime.datetime.now() - datetime.timedelta(hours=hoursAgo)
+    qry = session.query(func.from_unixtime(images.timestamp), images.path, images.hasTurtle, probabilities.prob)\
+        .join(images, images.timestamp == probabilities.timestamp)\
+        .filter(probabilities.prob > minprob)\
+        .filter(images.timestamp > before.timestamp())\
+        .filter(images.hasTurtle != HAS_TURTLE.NO)
+        
+    df = pd.read_sql(qry.statement, qry.session.bind)
+    df.index = df.from_unixtime_1
+    
+    lowbin = pd.Interval(pd.Timedelta(seconds=0), pd.Timedelta(seconds=second_separator))
+    higbin = pd.Interval(pd.Timedelta(seconds=second_separator), pd.Timedelta(seconds=second_separator*2))
+    bins = pd.IntervalIndex([lowbin, higbin])
+    df['bin'] = pd.cut(df.from_unixtime_1.diff(), bins)
+    
+    return df
