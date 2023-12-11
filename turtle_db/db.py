@@ -49,6 +49,12 @@ class probabilities(Base):
     timestamp=Column(Integer, primary_key=True)
     prob=Column(Float)
 
+class pretrained(Base):
+    __tablename__="pretrained"
+    timestamp=Column(Integer, primary_key=True)
+    model_file=Column(String(255), default="")
+    prob=Column(Float)
+
 class detections(Base):
     
     __tablename__="detections"
