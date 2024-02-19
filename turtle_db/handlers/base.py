@@ -3,7 +3,7 @@
 import tornado.web
 import tornado.websocket
 from ..db import conditions, get_rand_images, update_image, HAS_TURTLE, get_prob_images
-from ..db import mksession, images, probabilities
+from ..db import mksession, images, probabilities, pretrained
 from ..image_utils import collect_images, collect_thumbnails, convert
 from sqlalchemy import and_
 from sqlalchemy import desc, func
@@ -95,8 +95,8 @@ class RecentDetectHandler(MainHandler):
             ts = int(ts)
 
         session = mksession()
-        qry = session.query(images, probabilities)\
-            .join(images, images.timestamp == probabilities.timestamp)\
+        qry = session.query(images, pretrained)\
+            .join(images, images.timestamp == pretrained.timestamp)\
             .filter(images.timestamp > ts-60)\
             .order_by(images.timestamp).limit(9)
         imgs = pd.read_sql(qry.statement, qry.session.bind)
@@ -240,8 +240,8 @@ class DataImages(MainHandler):
     def get_recent(self, minsago=60):
         session = mksession()
         recent = datetime.datetime.now().timestamp() - 24*60*60
-        resp = session.query(images, probabilities)\
-            .join(images, images.timestamp == probabilities.timestamp)\
+        resp = session.query(images, pretrained)\
+            .join(images, images.timestamp == pretrained.timestamp)\
             .filter(images.timestamp >= recent)
         df = pd.read_sql(resp.statement, resp.session.bind)
         df['url'] = df['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
@@ -421,7 +421,7 @@ class DetectHandler(MainHandler):
 
     async def get(self):
         argre = re.compile(r"\d{8,12}")
-
+        dt = None
         for arg in self.request.arguments:
             if argre.match(arg) and self.get_argument(arg) in ["0", "1"]:
                 hasTurtle = int(self.get_argument(arg))
@@ -435,24 +435,65 @@ class DetectHandler(MainHandler):
                 update_image(int(arg), hasTurtle)
 
         nimages = self.get_argument('nimages', None)
-
+        since = self.get_argument('time', None)
+        if since is None:
+            if dt is None:
+                since = datetime.datetime.now() - datetime.timedelta(hours=1)
+            else:
+                since = dt
+        else:
+            since = parser.parse(since, default=datetime.datetime.now()-datetime.timedelta(hours=1))
+        print(since)
+        since = since.timestamp()
+        
         if nimages:
             nimages = int(nimages)
         else:
             nimages = 20
-        random = self.get_argument('random', None)
-        if random:
-            imgs = get_prob_images(0.0, 1.0, nimages, recent=True, null=True)
-        else:
-            imgs = get_prob_images(0.0, 1.0, nimages, recent=False, null=True)
+        imgs = get_prob_images(0.0, 1.0, nimages, recent=False, null=True, pre_trained=True, since=since)
         
         imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
-
+        print(imgs.tail)
         self.render(
                 'detect.html',
                 imgs=imgs,
                 )
 
+class EdgeCaseHandler(MainHandler):
+    
+    def get(self):
+        
+        argre = re.compile(r"\d{8,12}")
+
+        for arg in self.request.arguments:
+            if argre.match(arg) and self.get_argument(arg) in ["0", "1"]:
+                hasTurtle = int(self.get_argument(arg))
+                dt = datetime.datetime.fromtimestamp(int(arg))
+                if hasTurtle:
+                    hasTurtle = HAS_TURTLE.YES
+                else:
+                    hasTurtle = HAS_TURTLE.NO
+
+                print(dt, hasTurtle)
+                update_image(int(arg), hasTurtle)
+        
+        session = mksession()
+        qry = session.query(images, pretrained)\
+            .join(images, images.timestamp == pretrained.timestamp)\
+            .filter(images.hasTurtle == HAS_TURTLE.NO)\
+            .filter(pretrained.prob > 0.70)\
+            .order_by(pretrained.prob.desc())\
+            .limit(400)
+        imgs = pd.read_sql(qry.statement, qry.session.bind)
+        imgs['url'] = imgs['path']\
+            .apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+    
+
+        imgs.index = pd.to_datetime(imgs.timestamp, unit='s')
+        self.render(
+            'detect.html',
+            imgs=imgs
+        )
 
 class ImageHandler(tornado.web.StaticFileHandler):
     def initialize(self, **kwargs):

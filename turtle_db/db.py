@@ -10,7 +10,7 @@ from pathlib import Path
 from pymysql.err import IntegrityError
 import pandas as pd
 import datetime
-
+import requests
 
 Base = declarative_base()
 TEST_CASE = True
@@ -61,12 +61,40 @@ class detections(Base):
     timestamp=Column(Integer, primary_key=True)
     hasTurtle=Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
 
+class temp_sensors(Base):
+    
+    __tablename__="temp_sensors"
+    timestamp = Column(Integer, primary_key=True)
+    address = Column(String(255))
+    temp = Column(Float)
+    
+    
+
+def log_temp_sensors(ip):
+    rq = requests.get(f"http://{ip}/temps")
+    
+    data=rq.json()
+    session = mksession()   
+    for ii,(addr, temp) in enumerate(data.items()):
+        
+        row = temp_sensors()
+        row.timestamp = datetime.datetime.now().timestamp()+ii
+        row.address = addr
+        row.temp = temp
+        session.add(row)
+    session.commit()
+    session.close()
+    
+    return data
+      
+
 def recreate():
-    md = db.Base.metadata
-    s = db.mksession()
+    md = Base.metadata
+    s = mksession()
     md.bind = s.bind
     md.create_all(s.bind)
     s.close()
+
 
 
 def build_imagedb():
@@ -118,23 +146,27 @@ def get_rand_images(num=20):
 
     return rows
 
-def get_prob_images(low, high, num=50, recent=False, null=True):
+def get_prob_images(low, high, num=50, recent=False, null=True, pre_trained=True, since=None):
     session = mksession()
-    july = datetime.datetime(2023, 7, 1, 0, 0, 0).timestamp()
-    qry = session.query(probabilities, images)\
-        .filter(probabilities.timestamp > july)\
-        .join(images, probabilities.timestamp == images.timestamp)
+    if since is None:
+        since = datetime.datetime(2023, 7, 1, 0, 0, 0).timestamp()
+    print(since)
+    if pre_trained:
+        qry = session.query(pretrained.timestamp, images.path, images.hasTurtle, pretrained.prob)\
+            .filter(pretrained.timestamp > since)\
+            .join(images, pretrained.timestamp == images.timestamp)
+        
+    else:
+        qry = session.query(probabilities, images)\
+            .filter(probabilities.timestamp > since)\
+            .join(images, probabilities.timestamp == images.timestamp)
     if recent:
         qry = qry.order_by(desc(images.timestamp))
-    else:
-        qry = qry.order_by(func.rand())
 
     if null:
         qry = qry.filter(images.hasTurtle == HAS_TURTLE.NULL)
-    qry = qry.filter(probabilities.prob > low)\
-        .filter(probabilities.prob < high)\
-        .limit(num)
-        
+
+    qry=qry.limit(num)    
     df = pd.read_sql(qry.statement, qry.session.bind)
     df.index = pd.to_datetime(df.timestamp, unit='s')
     
@@ -160,7 +192,8 @@ def mksession():
 
 def log_conditions(data):
 
-    session = sessionmaker(bind=conditions.metadata.bind)()
+    #session = sessionmaker(bind=conditions.metadata.bind)()
+    session = mksession()
     row = conditions()
     row.timestamp = data['timestamp']
     row.temperature_F = data['temp']

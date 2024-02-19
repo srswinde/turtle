@@ -18,4 +18,5 @@ url_patterns = [
     (r'/cassini/detect', base.DetectHandler),
     (r'/cassini/recent_detect', base.RecentDetectHandler),
     (r'/cassini/detect_intervals', base.CassiniIntervals),
+    (r'/cassini/edge_cases', base.EdgeCaseHandler)
 ]
