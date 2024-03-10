@@ -61,6 +61,13 @@ class detections(Base):
     timestamp=Column(Integer, primary_key=True)
     hasTurtle=Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
 
+class pretrained_models(Base):
+    __tablename__="pretrained"
+    id=Column(Integer, primary_key=True, Autoincrement=True)
+    timestamp=Column(Integer)
+    model_file=Column(String(255), default="")
+    prob=Column(Float)
+
 class temp_sensors(Base):
     
     __tablename__="temp_sensors"
@@ -154,7 +161,9 @@ def get_prob_images(low, high, num=50, recent=False, null=True, pre_trained=True
     if pre_trained:
         qry = session.query(pretrained.timestamp, images.path, images.hasTurtle, pretrained.prob)\
             .filter(pretrained.timestamp > since)\
-            .join(images, pretrained.timestamp == images.timestamp)
+            .join(images, pretrained.timestamp == images.timestamp)\
+            .filter(pretrained.prob > low)\
+            .filter(pretrained.prob < high)
         
     else:
         qry = session.query(probabilities, images)\

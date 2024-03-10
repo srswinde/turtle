@@ -381,12 +381,11 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
         return imgurl
 
 
-class Test(MainHandler):
+class ImagesPlayground(MainHandler):
 
     def get(self):
 
-        self.write(dict(self.request.headers))
-
+        self.render('images-playground.html')
 
 class Lights(MainHandler):
     name = "Lights"
@@ -435,10 +434,10 @@ class DetectHandler(MainHandler):
                 update_image(int(arg), hasTurtle)
 
         nimages = self.get_argument('nimages', None)
-        since = self.get_argument('time', None)
+        since = self.get_argument('since', None)
         if since is None:
             if dt is None:
-                since = datetime.datetime.now() - datetime.timedelta(hours=1)
+                since = datetime.datetime.now() - datetime.timedelta(hours=1500)
             else:
                 since = dt
         else:
@@ -450,7 +449,7 @@ class DetectHandler(MainHandler):
             nimages = int(nimages)
         else:
             nimages = 20
-        imgs = get_prob_images(0.0, 1.0, nimages, recent=False, null=True, pre_trained=True, since=since)
+        imgs = get_prob_images(0.70, 1.0, nimages, recent=False, null=True, pre_trained=True, since=since)
         
         imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
         print(imgs.tail)
