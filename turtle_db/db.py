@@ -62,7 +62,7 @@ class detections(Base):
     hasTurtle=Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
 
 class pretrained_models(Base):
-    __tablename__="pretrained"
+    __tablename__="pretrained_models"
     id=Column(Integer, primary_key=True, autoincrement=True)
     timestamp=Column(Integer)
     model_file=Column(String(255), default="")
