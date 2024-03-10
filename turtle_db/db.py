@@ -63,7 +63,7 @@ class detections(Base):
 
 class pretrained_models(Base):
     __tablename__="pretrained"
-    id=Column(Integer, primary_key=True, Autoincrement=True)
+    id=Column(Integer, primary_key=True, autoincrement=True)
     timestamp=Column(Integer)
     model_file=Column(String(255), default="")
     prob=Column(Float)
