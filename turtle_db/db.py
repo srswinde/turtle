@@ -68,6 +68,12 @@ class pretrained_models(Base):
     model_file=Column(String(255), default="")
     prob=Column(Float)
 
+class pretrained_20240311_0221(Base):
+    __tablename__="pretrained_20240311_0221"
+    timestamp=Column(Integer, primary_key=True)
+    model_file=Column(String(255), default="")
+    prob=Column(Float)
+
 class temp_sensors(Base):
     
     __tablename__="temp_sensors"
@@ -106,7 +112,7 @@ def recreate():
 
 def build_imagedb():
     root_dir = Path('/mnt/turtle/imgs/2023')
-    session = mksession(bind=engine)
+    session = _model(bind=engine)
     rows = []
     
     first = session.query(images).order_by(desc(images.timestamp)).first()
