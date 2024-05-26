@@ -3,7 +3,8 @@
 import tornado.web
 import tornado.websocket
 from ..db import conditions, get_rand_images, update_image, HAS_TURTLE, get_prob_images
-from ..db import mksession, images, probabilities, pretrained
+from ..db import mksession, images, probabilities, pretrained, pretrained_20240311_0221
+from ..db import detect_intervals
 from ..image_utils import collect_images, collect_thumbnails, convert
 from sqlalchemy import and_
 from sqlalchemy import desc, func
@@ -95,8 +96,8 @@ class RecentDetectHandler(MainHandler):
             ts = int(ts)
 
         session = mksession()
-        qry = session.query(images, pretrained)\
-            .join(images, images.timestamp == pretrained.timestamp)\
+        qry = session.query(images, pretrained_20240311_0221)\
+            .join(images, images.timestamp == pretrained_20240311_0221.timestamp)\
             .filter(images.timestamp > ts-60)\
             .order_by(images.timestamp).limit(9)
         imgs = pd.read_sql(qry.statement, qry.session.bind)
@@ -240,18 +241,18 @@ class DataImages(MainHandler):
     def get_recent(self, minsago=60):
         session = mksession()
         recent = datetime.datetime.now().timestamp() - 24*60*60
-        resp = session.query(images, pretrained)\
-            .join(images, images.timestamp == pretrained.timestamp)\
+        resp = session.query(images, pretrained_20240311_0221.prob)\
+            .join(images, images.timestamp == pretrained_20240311_0221.timestamp)\
             .filter(images.timestamp >= recent)
         df = pd.read_sql(resp.statement, resp.session.bind)
         df['url'] = df['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
         df['hasTurtle'] = df['hasTurtle'].apply(lambda x: x.value)
-
+        print(df.timestamp)
         resp = {
-                "timestamp": df.timestamp.tolist(),
-                "url": df.url.tolist(),
-                "hasTurtle": df.hasTurtle.tolist(),
-                "prob": df.prob.tolist()
+                "timestamp": df.timestamp.to_list(),
+                "url": df.url.to_list(),
+                "hasTurtle": df.hasTurtle.to_list(),
+                "prob": df.prob.to_list()
         }
         return resp
 
@@ -383,6 +384,25 @@ class ImageSocket(tornado.websocket.WebSocketHandler):
 
 class ImagesPlayground(MainHandler):
 
+    def post(self):
+        data = json.loads(self.request.body)
+        date = parser.parse(data['date'])
+        groups = detect_intervals(date)
+        
+       
+        print(groups.index)
+        group_dict = {}
+        for group in groups.index.get_level_values(0).unique():
+            group_dict[group] = dict(
+                timestamp = groups.loc[group].index.astype(int).to_list(),
+                prob = list(groups.loc[group].values)
+            )
+                
+                
+            
+        self.write(group_dict)
+        
+        
     def get(self):
 
         self.render('images-playground.html')
@@ -430,29 +450,45 @@ class DetectHandler(MainHandler):
                 else:
                     hasTurtle = HAS_TURTLE.NO
 
-                print(dt, hasTurtle)
+                #print(dt, hasTurtle)
                 update_image(int(arg), hasTurtle)
 
+
+        prob_low = self.get_argument('prob_low', '')
+        prob_high = self.get_argument('prob_high', '')
+        if prob_low:
+            prob_low = float(prob_low)
+        else: 
+            prob_low = 0.5
+        if prob_high:
+            prob_high = float(prob_high)
+        else:
+            prob_high = 1.0
+        
         nimages = self.get_argument('nimages', None)
         since = self.get_argument('since', None)
-        if since is None:
+        if since:
+            print(since)
+            since = parser.parse(since, default=datetime.datetime.now()-datetime.timedelta(hours=1))
+            
+        else:
+            print("NOT HERE")
             if dt is None:
                 since = datetime.datetime.now() - datetime.timedelta(hours=1500)
             else:
                 since = dt
-        else:
-            since = parser.parse(since, default=datetime.datetime.now()-datetime.timedelta(hours=1))
-        print(since)
+                
+        print("since is ", since)
         since = since.timestamp()
         
         if nimages:
             nimages = int(nimages)
         else:
             nimages = 20
-        imgs = get_prob_images(0.70, 1.0, nimages, recent=False, null=True, pre_trained=True, since=since)
+        imgs = get_prob_images(prob_low, prob_high, nimages, null=True, since=since)
         
         imgs['url'] = imgs['path'].apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
-        print(imgs.tail)
+        print(imgs.tail())
         self.render(
                 'detect.html',
                 imgs=imgs,

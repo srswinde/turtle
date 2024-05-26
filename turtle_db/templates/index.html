@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %} GIF Maker {% end %}
+{% block title %} Cassini's Home{% end %}
 {% block head %}
 
 		<script src="{{ static_url('js/plotly-latest.min.js') }}"></script>
@@ -29,6 +29,19 @@
       img#mainpic
       {
         margin-bottom:20px;
+      }
+      span.detections
+      {
+        display:inline-block;
+        margin:10px;
+        width: 250px;
+        border: 1px solid black;
+        height: 150px;
+        padding: 10px;
+      }
+      a.day-box
+      {
+        font-size: 2py4px;
       }
     </style>
 		<script src="/indi/static/js/indi.js"></script>
@@ -89,7 +102,61 @@
 						setPropertyCallback(`${device}.*`, handleProperty, init=true);
 					}
 				}
+                getCassiniDetections();
 			}
+
+
+            const getCassiniDetections = async () => {
+                let now = new Date()
+                const url = `/cassini/playground`;
+                
+                for (var i=0; i<7; i++)
+                {
+                    const displayElement = document.getElementById(`prevDay${i}`);
+                    date = new Date(now - (i*24*60*60*1000));
+                    console.log(i*24*60*60*1000)
+                    let dayString;
+                    if(i == 0)
+                    {
+                        dayString = 'Today';
+                    }
+                    else
+                    {
+                        dayString = date.toLocaleDateString('en-US', {weekday: 'long'});
+                    }
+                    const response = await fetch(url, {
+                        method: 'POST', 
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({'date': date.toDateString()}) 
+                    })
+                    const dayElement = document.createElement('h2');
+                    dayElement.innerHTML = dayString;
+                    displayElement.appendChild(dayElement);
+                    const atag = document.createElement('a');
+                    displayElement.appendChild(atag);
+                    atag.classList.add('day-box')
+                    if (!response.ok) 
+                    {
+                        
+                        atag.innerHTML = `No Cassini Activity`;
+                        
+                    }
+                    else
+                    {
+                        const responseData = await response.json();
+                        console.log(responseData.length)
+                        atag.innerHTML = `${Object.keys(responseData).length} Sightings`;
+                        atag.setAttribute('href', `/cassini/playground?date=${date.toDateString()}`);
+                        atag.classList.add('sighting')
+
+                    }
+                }
+                
+
+            }
+
 			const foo = (INDI) => {
 				console.log(`recvd ${INDI.name}`)
 			}
@@ -379,13 +446,22 @@
 
 		</div>
 
-   
+        <div id="detections">
+            <h2>Cassini's Week</h2>
+            <span id="prevDay0" class="detections today"></span>
+            <span id="prevDay1" class="detections"></span>
+            <span id="prevDay2" class="detections"></span>
+            <span id="prevDay3" class="detections"></span>
+            <span id="prevDay4" class="detections"></span>
+            <span id="prevDay5" class="detections"></span>
+            <span id="prevDay6" class="detections"></span>
+        </div>
                     
             <div id="plot_container">
   				<div id="plot" style="width:700px;height:350px;"></div>
 	    	</div>
             <div>
-            <h1> Recent Cassini Sightings </h1>
+            <h1> Model Predictions </h1>
             <div id="detections" style="max-width:680px"></div>
                 <table>
                     <tr>

@@ -159,24 +159,18 @@ def get_rand_images(num=20):
 
     return rows
 
-def get_prob_images(low, high, num=50, recent=False, null=True, pre_trained=True, since=None):
+def get_prob_images(low, high, num=50, null=True, since=None):
     session = mksession()
     if since is None:
         since = datetime.datetime(2023, 7, 1, 0, 0, 0).timestamp()
-    print(since)
-    if pre_trained:
-        qry = session.query(pretrained.timestamp, images.path, images.hasTurtle, pretrained.prob)\
-            .filter(pretrained.timestamp > since)\
-            .join(images, pretrained.timestamp == images.timestamp)\
-            .filter(pretrained.prob > low)\
-            .filter(pretrained.prob < high)
         
-    else:
-        qry = session.query(probabilities, images)\
-            .filter(probabilities.timestamp > since)\
-            .join(images, probabilities.timestamp == images.timestamp)
-    if recent:
-        qry = qry.order_by(desc(images.timestamp))
+    qry = session.query(pretrained_20240311_0221.timestamp, images.path, images.hasTurtle, pretrained_20240311_0221.prob)\
+        .filter(pretrained_20240311_0221.timestamp > since)\
+        .join(images, pretrained_20240311_0221.timestamp == images.timestamp)\
+        .filter(pretrained_20240311_0221.prob > low)\
+        .filter(pretrained_20240311_0221.prob < high)
+    
+
 
     if null:
         qry = qry.filter(images.hasTurtle == HAS_TURTLE.NULL)
@@ -243,17 +237,34 @@ def gather_classified_images():
 
     return rows
 
-def detect_intervals():
+def detect_intervals(date=None, grouping_time=300, minprob=0.55):
+    if date is None:
+        date = datetime.datetime.now()
+    prob_table = pretrained_20240311_0221
+    
+    start = datetime.datetime(date.year, date.month, date.day, 0, 0, 0)
+    end = datetime.datetime(date.year, date.month, date.day, 23, 59, 59)
+    
     session = mksession()
-    recent = datetime.datetime.now() - datetime.timedelta(hours=48)
-    print(recent)
-    qry = session.query(func.from_unixtime(images.timestamp), images.path, probabilities.prob)\
-        .join(probabilities, images.timestamp == probabilities.timestamp)\
-        .filter(images.timestamp> recent.timestamp())\
-        .filter(probabilities.prob > 0.9)
-    df = pd.read_sql(qry.statement, session.bind)
-    df.index = df.from_unixtime_1
-    return df
+    qry = session.query(images, prob_table.prob)\
+        .join(prob_table, images.timestamp == prob_table.timestamp)\
+        .filter(images.timestamp > start.timestamp())\
+        .filter(images.timestamp < end.timestamp())
+        
+    df = pd.read_sql(qry.statement, qry.session.bind)
+    df['url'] = df.path.apply(lambda x: x.replace('/mnt/turtle', 'staticturtle'))
+    prob = df.prob
+    prob.index = pd.to_datetime(df.timestamp, unit='s')
+    df = prob[prob > minprob]
+    diff_series = df.index.to_series().diff().dt.total_seconds() > grouping_time
+    group_series = diff_series.cumsum()
+    grouped = df.groupby(group_series)
+    grouped = grouped.apply(lambda x:x)
+    
+    print(grouped)
+    grouped.index.set_names('group', level=0, inplace=True)
+    return grouped
+
 
 def time_group(second_separator=300):
     

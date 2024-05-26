@@ -82,6 +82,18 @@ def collect_images(start, delta=datetime.timedelta(minutes=30), limit=None):
     else:
         return df
 
+def get_detections(date):
+    prob_table = db.pretrained_20240311_0221
+    since = datetime.datetime(2024, 3, 1, 0,0,0)
+    session = db.mksession()
+    qry = session.query(db.images, prob_table).filter(db.images.timestamp > since.timestamp())\
+        .join(prob_table, db.images.timestamp == prob_table.timestamp)
+    df = pd.read_sql(qry.statement, qry.session.bind)
+    df['url'] = df.path.apply(lambda x: x.replace('/mnt/turtle', 'staticturtle'))
+    prob = df.prob
+    prob.index = pd.to_datetime(df.timestamp, unit='s')
+    
+
 async def convert(files, out=None, scale="648x411!"):
 
     if out is None:

@@ -72,7 +72,7 @@ def handle_blob(blob):
 class TornadoApplication(tornado.web.Application):
 
     def __init__(self):
-        iwa = INDIWebApp(indihost="192.168.0.202", indiport=7624, handle_blob=handle_blob)
+        iwa = INDIWebApp(indihost="192.168.0.205", indiport=7624, handle_blob=handle_blob)
         ihandlers = iwa.indi_handlers()
         url_patterns.extend(ihandlers)
         url_patterns.append((r"/indi/imain", INDIMainPage))
