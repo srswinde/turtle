@@ -47,13 +47,18 @@ class MainHandler(tornado.web.RequestHandler):
         if "Mobile" in self.request.headers['User-Agent']:
             isMobile = True
 
-        r = redis.Redis()
-        data = r.get("turtle_conditions")
+        
+        try:
 
-        pageinfo = dict(
-                   last=json.loads(data),
+            r = redis.Redis()
+            data = r.get("turtle_conditions")
 
-                )
+            pageinfo = dict(
+                       last=json.loads(data),
+
+                    )
+        except Exception as error:
+            pageinfo = {}
 
         if isMobile:
             self.render(
@@ -102,7 +107,7 @@ class RecentDetectHandler(MainHandler):
             .order_by(images.timestamp).limit(9)
         imgs = pd.read_sql(qry.statement, qry.session.bind)
         imgs['url'] = imgs['path']\
-            .apply(lambda x: str(x).replace("/mnt/turtle", "staticturtle"))
+            .apply(lambda x: re.sub("\/mnt\/(turtle|nfs)\/imgs", "static/staticturtle", x))
         print(imgs)
 
         self.finish(

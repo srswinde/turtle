@@ -31,20 +31,20 @@ from turtle_db import db
 class INDIMainPage(INDIHandler):
 
     def get(self):
-        self.indi_render(Path.cwd()/"turtle_db/templates/picam.html", device_name=['*'])
+        self.indi_render(Path.cwd()/"turtle_db/templates/picam2.html", devices=['*'], title="TITLE", example_variable="EXAMPLE")
 
 def handle_blob(blob):
     dtnow = datetime.datetime.now()
     now=int(time.time())
     imname = f'{now}.jpg'
-    remote_nowpic = Path('/mnt/turtle/imgs')
+    remote_nowpic = Path('/mnt/nfs/imgs')
     remote_nowpic/= dtnow.strftime("%Y")
     remote_nowpic/= dtnow.strftime("%b")
     remote_nowpic/= dtnow.strftime("%d")
     remote_nowpic.mkdir(parents=True, exist_ok=True)
     remote_nowpic/=imname
     remote_nowpic = str(remote_nowpic)
-    nowpic = Path('/mnt/turtle/latest/latest.jpg')
+    nowpic = Path('/mnt/nfs/imgs/latest/latest.jpg')
 
 
     with open(remote_nowpic, 'wb') as archive:
@@ -67,6 +67,7 @@ def handle_blob(blob):
             }
     rconn.publish("home_image", json.dumps(data))
     rconn.set("home_image", json.dumps(data))
+
 
 
 class TornadoApplication(tornado.web.Application):
@@ -208,9 +209,10 @@ def main():
 
     app = TornadoApplication()
     app.listen(options.port)
+    print(options.port)
     loop = tornado.ioloop.IOLoop.current()
     loop.asyncio_loop.create_task(start_redis())
-    loop.asyncio_loop.create_task(get_underground_temp())
+    #loop.asyncio_loop.create_task(get_underground_temp())
 #    loop.asyncio_loop.create_task(grabTanspot())
     loop.start()
 

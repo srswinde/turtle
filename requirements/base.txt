@@ -6,3 +6,4 @@ pandas
 redis
 scipy
 aiohttp
+requests

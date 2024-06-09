@@ -11,6 +11,7 @@ from pymysql.err import IntegrityError
 import pandas as pd
 import datetime
 import requests
+import re
 
 Base = declarative_base()
 TEST_CASE = True
@@ -194,7 +195,7 @@ def update_image(timestamp, hasTurtle):
 
 def mksession():
 
-    engine = create_engine("mysql+pymysql://scott:scott@192.168.0.148/turtle")
+    engine = create_engine("mysql+pymysql://scott:scott@localhost/turtle")
     session = sessionmaker(bind=engine)()
     return session
 
@@ -252,7 +253,9 @@ def detect_intervals(date=None, grouping_time=300, minprob=0.55):
         .filter(images.timestamp < end.timestamp())
         
     df = pd.read_sql(qry.statement, qry.session.bind)
-    df['url'] = df.path.apply(lambda x: x.replace('/mnt/turtle', 'staticturtle'))
+    df['url'] = df['path']\
+        .apply(lambda x: re.sub("\/mnt\/(turtle|nfs)\/imgs", "http://192.168.0.167:8000/cassini/static/staticturtle", x))
+        
     prob = df.prob
     prob.index = pd.to_datetime(df.timestamp, unit='s')
     df = prob[prob > minprob]
@@ -261,7 +264,8 @@ def detect_intervals(date=None, grouping_time=300, minprob=0.55):
     grouped = df.groupby(group_series)
     grouped = grouped.apply(lambda x:x)
     
-    print(grouped)
+    if len(grouped) == 0:
+        return grouped
     grouped.index.set_names('group', level=0, inplace=True)
     return grouped
 
