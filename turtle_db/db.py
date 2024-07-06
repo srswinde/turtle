@@ -1,10 +1,11 @@
 
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, Float, String, Enum, insert, desc, and_
+from sqlalchemy import Column, BigInteger, Integer, Float, String, Enum, insert, desc, and_
 from sqlalchemy import create_engine
 from sqlalchemy.sql import func
 from sqlalchemy.orm import sessionmaker
+from pandas.errors import OutOfBoundsDatetime
 import enum
 from pathlib import Path
 from pymysql.err import IntegrityError
@@ -82,6 +83,16 @@ class temp_sensors(Base):
     address = Column(String(255))
     temp = Column(Float)
     
+class shed_camera(Base):
+    
+    __tablename__="shed_camera"
+    timestamp = Column(BigInteger, primary_key=True)
+    path = Column(String(512))
+    hasTurtle = Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
+    xpos = Column(Float, default=-1.0)
+    ypos = Column(Float, default=-1.0)
+    model_name = Column(String(512), default="")
+    prob = Column(Float, default=-1.0)
     
 
 def log_temp_sensors(ip):
@@ -290,4 +301,15 @@ def time_group(second_separator=300):
     bins = pd.IntervalIndex([lowbin, higbin])
     df['bin'] = pd.cut(df.from_unixtime_1.diff(), bins)
     
+    return df
+
+
+def get_dataframe(table):
+    session = mksession()
+    qry = session.query(table)
+    df = pd.read_sql(qry.statement, qry.session.bind)
+    try:
+        df.index = pd.to_datetime(df.timestamp, unit='s')
+    except OutOfBoundsDatetime:
+        df.index = pd.to_datetime(df.timestamp, unit='ms')
     return df

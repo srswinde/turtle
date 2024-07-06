@@ -268,8 +268,7 @@ class Websocket(tornado.websocket.WebSocketHandler):
         r = redis.Redis()
         data = r.get("turtle_conditions")
         newimage = r.get("home_image")
-        print(f"newimage is {newimage}")
-        alldata = {"temp": json.loads(data)}
+        alldata = {}
         alldata["home_image"] = json.loads(newimage)
         alldata["home_image"]["name"] = alldata["home_image"]["name"].replace("/mnt/turtle", "staticturtle")
         self.write_message(json.dumps(alldata))

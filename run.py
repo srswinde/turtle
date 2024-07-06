@@ -97,12 +97,13 @@ async def start_redis():
         if clean_msg:
 
             data = json.loads(msg[2].decode())
-            print(data)
             if "temp" in data: # only log temp data not recent images
                 loop.run_in_executor(None, log_conditions, data)
 
-            for ws in get_connections():
-                print(msg[2])
+
+            connections = get_connections()
+            print(connections)
+            for ws in connections:
                 if "temp" in data:
                     ws.write_message(json.dumps({"temp":data}))
                 elif "name" in data:

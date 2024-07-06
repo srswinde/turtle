@@ -2,24 +2,6 @@
 {% block title %} Cassini's Home{% end %}
 {% block head %}
 
-        <!-- Required meta tags -->
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="apple-touch-icon" sizes="180x180" href="/indi/static/favicon/apple-touch-icon.png">
-		<link rel="shortcut icon" type="image/png" sizes="32x32" href="">
-		<link rel="manifest" href="/indi/static/favicon/site.webmanifest">
-		<link href="/indi/static/fontawesome/css/all.css" rel="stylesheet">
-		<!-- Load pyINDI scripts -->
-        <script src="/indi/static/js/constants.js"></script>
-		<script src="/indi/static/js/indi.js"></script>
-        <script src="/indi/static/js/builder-indi.js"></script>
-        <script src="/indi/static/js/updater-indi.js"></script>
-        <script src="/indi/static/js/logger-indi.js"></script>
-        <script src="/indi/static/js/utils-indi.js"></script>
-		<script src="/indi/static/js/maps-indi.js"></script>
-		<!-- Load pyINDI styling -->
-		<link rel="stylesheet" href="/indi/static/css/indi.css">
-
 		<script src="{{ static_url('js/plotly-latest.min.js') }}"></script>
 
     <style>
@@ -64,50 +46,14 @@
     </style>
 
 		<script>
-			/* Constants */
-			var CUSTOM_GUI = true; // Triggers to true if html is in body tag below
 
-			/* Globals */
-			var available = {} // Available elements to use for custom gui
 
 			const main = () => {
-            init()
-				/* Runs on load
-				
-				Description
-				-----------
-				Builds with default properties using below callback. Change
-				to modify the callbacks.
+                init()
 
-				Arguments
-				---------
-				None
-
-				Returns
-				-------
-				None
-				*/
-                var devices = ["*"]
-                initialize(devices, customGui=true);
                 getCassiniDetections();
 			}
-            const handleProperty = (indi) => {
-                let htmlElement = handle(indi);
-                if (!htmlElement) {
-                    if (ApprovedOp.includes(indi.op) && indi.metainfo !== "bvp") {
-                        tag_str = `<div data-custom-vector="${indi.name}" data-custom-device="${indi.device}"/>`;
-                        console.debug(`Selector not found. To add vector to page use ${tag_str}`);
-                    }
-                }
-                if(indi.metainfo === "bvp" && indi.op === "set")
-                {
-                    let img = document.querySelector("img#cassini")
-                    img.setAttribute('src', "data:image/jpg;base64,"+btoa(indi.image))
 
-                }
-
-
-            }
 
             const getCassiniDetections = async () => {
                 let now = new Date()
@@ -117,7 +63,6 @@
                 {
                     const displayElement = document.getElementById(`prevDay${i}`);
                     date = new Date(now - (i*24*60*60*1000));
-                    console.log(i*24*60*60*1000)
                     let dayString;
                     if(i == 0)
                     {
@@ -149,7 +94,6 @@
                     else
                     {
                         const responseData = await response.json();
-                        console.log(responseData.length)
                         if (Object.keys(responseData).length == 0)
                         {
                             atag.innerHTML = `No Cassini Activity`;
@@ -170,124 +114,21 @@
 			const foo = (INDI) => {
 				console.log(`recvd ${INDI.name}`)
 			}
-			const updateAvailable = (INDI, omit=false) => {
-				/* Updates hash table of available vectors
 
-				Description
-				-----------
-				This function updates the available vectors to use when building
-				the gui or custom gui. The indentifier is built using the device 
-				name and the name because the name is unique per device. 
-				I wanted to use a group to generalize it more, however when not a "def" then the
-				group is not included. This works out though because we can narrow down
-				more of what to exclude.
 
-				Arguments
-				---------
-				INDI : Object that contains all information about the indi property
-				omit   : If true, stores the value as false to omit from gui
 
-				Returns
-				-------
-				None
-				*/
-				var identifier = `${INDI.device}.${INDI.name}`;
-				available[identifier] = omit ? false : true;
-
-				return;
-			}
-
-			const handlePropertyOld = (INDI) => {
-				/* Handles incoming indi
-
-				Description
-				-----------
-				This function will be called whenever an INDI property with the device 
-				 is received. This is where users should modify the
-				code to append to specific objects.
-
-				If wanting to use a custom GUI, enable in the configuration and use 
-				appendTo for each grouping. If you assign the group to a specific 
-				location, all of the nested properties will populate in the group 
-				location.
-
-				Arguments
-				---------
-				INDI : Object that contains all information about the indi property
-
-				Returns
-				-------
-				None
-				*/
-				// If definition, create new group and device if needed
-
-				/*
-				If we want a custom gui, we need to build the html below in <body>.
-				In that, we should use the vector ID and device ID so when a new INDI 
-				comes in, we try to find the id. To start off, lets only use the
-				vector for custom positioning.
-				*/
-				console.log(INDI.metainfo)
-                conole.log("Handling")
-				if (INDI.op === "def") {
-
-					if (!CUSTOM_GUI) {
-						var device = newDevice(INDI);
-						var group = newGroup(INDI);
-
-						// Update table of available properties
-						updateAvailable(INDI);
-					}
-					else {
-						// Get the element to build the new group in
-						var deviceSelector = `[data-custom-device="${INDI.device}"]`;
-						var vectorSelector = `[data-custom-vector="${INDI.name}"]`;
-
-						var appendToSelector = `${deviceSelector}${vectorSelector}`; 
-						var appendTo = document.querySelector(`${appendToSelector}`);
-
-						// If the placement doesn't exist, issue to console and return
-						if (!appendTo) {
-							console.debug(`Skipping ${INDI.device}.${INDI.group}.${INDI.name}`);
-							updateAvailable(INDI, omit=true);
-							return;
-						}
-						var vector = newVector(INDI, appendTo);
-						updateAvailable(INDI);
-					}
-				}
-				else 
-				{
-					if(INDI.name === "image")
-					{
-						img = document.querySelector("img#cassini")
-            img.src = "data:img/jpg;base64,"+btoa(INDI.image)
-
-            img.title = String(new Date());
-					}
-				}
-				// Update properties
-				if (!available[`${INDI.device}.${INDI.name}`]) {
-					return;
-				}
-				var vector = newVector(INDI);
-				// Do whatever you want with vector element
-
-        return;
-			}
-		</script>
-
-    <script>
 		DATA = null;
         LATEST_IMAGES=[];
         THIS_IMAGE = 0;
         function init()
         {
-            /*
+            console.log("init")
+            
             var protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
             var ws = new WebSocket(protocol + document.location.host + "/cassini/websocket");
             ws.onmessage = function(msg)
             {
+                console.log("data")
 
                 data = JSON.parse(msg.data)
                 if("temp" in data)
@@ -319,7 +160,8 @@
                     console.log( DATA['temp'][DATA['timestamp'].length-1])
                 }
                 if("home_image" in data)
-                { 
+                {
+                    console.log("HOME IMAGE")
                     let len = LATEST_IMAGES.length
 
                     $("img#mainpic").attr('src', data['home_image']['name']);
@@ -350,7 +192,7 @@
 
 
             }
-            */        
+                    
 
             $.ajax({
                 url:"/cassini/db/images/recent",

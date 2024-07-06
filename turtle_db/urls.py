@@ -2,6 +2,8 @@
 
 from .handlers import base
 from tornado.web import StaticFileHandler
+from .handlers import shed
+from .handlers import hole
 
 
 url_patterns = [
@@ -20,4 +22,14 @@ url_patterns = [
     (r'/cassini/detect_intervals', base.CassiniIntervals),
     (r'/cassini/edge_cases', base.EdgeCaseHandler),
     (r'/cassini/playground/', base.ImagesPlayground),
+    # Static file handlers
+    (r'/cassini/hole-cam/static/(.*)', StaticFileHandler, {'path': '/mnt/nfs/imgs/'}),
+    (r'/cassini/staticturtle/(.*)', StaticFileHandler, {'path': '/mnt/nfs/'}),
+    (r'/cassini/shed-cam/static/(.*)', StaticFileHandler, {'path': '/mnt/nfs/shed-cam/'}),
+    # Shed handlers
+    (r'/cassini/shed-cam', shed.ShedAnalysisHandler),
+    (r'/cassini/shed-cam/UpdateDb', shed.UpdateShedDbHandler),
+    #hole handlers
+    (r'/cassini/hole-cam', hole.HoleAnalysisHandler),
+    (r'/cassini/hole-cam/UpdateDb', hole.UpdateHoleDbHandler)
 ]
