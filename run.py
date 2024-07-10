@@ -124,19 +124,21 @@ async def get_underground_temp():
     while True:
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"http://192.168.0.139/temp"
+                url = f"http://192.168.1.157/temps"
                 async with session.get(url) as resp:
-                    temp = await resp.read()
+                    temp = await resp.json()
         except Exception as error:
             print(f"Error with underground temp: {error}")
             continue
-        temp = temp.decode()
-        r=redis.Redis()
-        r.set("underground_temp", temp)
-        r.publish("underground_temp", temp)
+        #temp = temp.decode()
+        #r=redis.Redis()
+        #r.set("underground_temp", temp)
+        #r.publish("underground_temp", temp)
         
         print(f"temp is {temp}")
-        row = db.underground_temp(timestamp=int(time.time()), temp=float(temp))
+        for ii, (addr, temp) in enumerate(temp.items()):
+            row = db.temp_sensors(timestamp=int(time.time()+ii), address=addr, temp=float(temp))
+            
         session = db.mksession()
         session.add(row)
         session.commit()
@@ -213,7 +215,7 @@ def main():
     print(options.port)
     loop = tornado.ioloop.IOLoop.current()
     loop.asyncio_loop.create_task(start_redis())
-    #loop.asyncio_loop.create_task(get_underground_temp())
+    loop.asyncio_loop.create_task(get_underground_temp())
 #    loop.asyncio_loop.create_task(grabTanspot())
     loop.start()
 
