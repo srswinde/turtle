@@ -95,6 +95,16 @@ class shed_camera(Base):
     prob = Column(Float, default=-1.0)
     
 
+class hole_camera(Base):
+    __tablename__="hole_camera"
+    timestamp = Column(BigInteger, primary_key=True)
+    path = Column(String(512))
+    hasTurtle = Column(Enum(HAS_TURTLE), default=HAS_TURTLE.NULL)
+    xpos = Column(Float, default=-1.0)
+    ypos = Column(Float, default=-1.0)
+    model_name = Column(String(512), default="")
+    prob = Column(Float, default=-1.0)
+
 def log_temp_sensors(ip):
     rq = requests.get(f"http://{ip}/temps")
     
