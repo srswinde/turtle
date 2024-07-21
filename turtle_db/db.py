@@ -37,6 +37,16 @@ class HAS_TURTLE(enum.Enum):
     YES = 1
     NO = 0
     NULL = -1
+    
+class HAS_HUMAN(enum.Enum):
+    YES = 1
+    NO = 0
+    NULL = -1
+    
+class HAS_MOTION(enum.Enum):
+    YES = 1
+    NO = 0
+    NULL = -1
 
 class images(Base):
     
@@ -95,6 +105,14 @@ class shed_camera(Base):
     prob = Column(Float, default=-1.0)
     
 
+class shed_camera_metadata(Base):
+    
+    __tablename__="shed_camera_metadata"
+    timestamp = Column(BigInteger, primary_key=True)
+    is_human_detected = Column(Enum(HAS_HUMAN), default=HAS_HUMAN.NULL)
+    is_motion_detected = Column(Enum(HAS_MOTION), default=HAS_MOTION.NULL)
+
+
 class hole_camera(Base):
     __tablename__="hole_camera"
     timestamp = Column(BigInteger, primary_key=True)
@@ -104,6 +122,13 @@ class hole_camera(Base):
     ypos = Column(Float, default=-1.0)
     model_name = Column(String(512), default="")
     prob = Column(Float, default=-1.0)
+
+class hole_camera_metadata(Base):
+    
+    __tablename__="hole_camera_metadata"
+    timestamp = Column(BigInteger, primary_key=True)
+    is_human_detected = Column(Enum(HAS_HUMAN), default=HAS_HUMAN.NULL)
+    is_motion_detected = Column(Enum(HAS_MOTION), default=HAS_MOTION.NULL)
 
 def log_temp_sensors(ip):
     rq = requests.get(f"http://{ip}/temps")
