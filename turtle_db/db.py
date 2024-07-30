@@ -111,7 +111,7 @@ class shed_camera_metadata(Base):
     is_motion_detected = Column(Enum(HAS_MOTION), default=HAS_MOTION.NULL)
 
 
-class shed_camera_human_detection(Base):
+class shed_camera_resnet_detection(Base):
     
     __tablename__="shed_camera_resnet_detection"
     index = Column(Integer, primary_key=True, autoincrement=True)
