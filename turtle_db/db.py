@@ -1,5 +1,3 @@
-
-
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, BigInteger, Integer, Float, String, Enum, insert, desc, and_
 from sqlalchemy import create_engine
@@ -112,6 +110,21 @@ class shed_camera_metadata(Base):
     is_human_detected = Column(Enum(HAS_HUMAN), default=HAS_HUMAN.NULL)
     is_motion_detected = Column(Enum(HAS_MOTION), default=HAS_MOTION.NULL)
 
+
+class shed_camera_human_detection(Base):
+    
+    __tablename__="shed_camera_resnet_detection"
+    index = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(BigInteger)
+    model_name = Column(String(512))
+    path = Column(String(512))
+    prob = Column(Float)
+    x1 = Column(Float)
+    y1 = Column(Float)
+    x2 = Column(Float)
+    y2 = Column(Float)
+    
+    
 
 class hole_camera(Base):
     __tablename__="hole_camera"
