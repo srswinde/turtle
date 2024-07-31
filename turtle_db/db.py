@@ -119,6 +119,8 @@ class shed_camera_resnet_detection(Base):
     model_name = Column(String(512))
     path = Column(String(512))
     prob = Column(Float)
+    class_name = Column(String(100))
+    class_number = Column(Integer)
     x1 = Column(Float)
     y1 = Column(Float)
     x2 = Column(Float)
