@@ -4,10 +4,11 @@ from .handlers import base
 from tornado.web import StaticFileHandler
 from .handlers import shed
 from .handlers import hole
+from .handlers import temperatures
 
 
 url_patterns = [
-    (r'/cassini/', base.MainHandler),
+    (r'/cassini/', base.IndexHandler),
     (r'/cassini/history.html', base.HistoryHandler),
     (r'/cassini/gifs.html', base.GifHandler),
     (r'/cassini/websocket', base.Websocket),
@@ -25,11 +26,21 @@ url_patterns = [
     # Static file handlers
     (r'/cassini/hole-cam/static/(.*)', StaticFileHandler, {'path': '/mnt/nfs/hole-cam/'}),
     #(r'/cassini/staticturtle/(.*)', StaticFileHandler, {'path': '/mnt/nfs/'}),
-    (r'/cassini/shed-cam/static/(.*)', StaticFileHandler, {'path': '/mnt/nfs/shed-cam/'}),
+    (r'/cassini/shed-cam/static/(.*)', shed.AuthenticatedStaticFileHandler, {'path': '/mnt/nfs/shed-cam/'}),
     # Shed handlers
     (r'/cassini/shed-cam', shed.ShedAnalysisHandler),
     (r'/cassini/shed-cam/UpdateDb', shed.UpdateShedDbHandler),
     #hole handlers
-    (r'/cassini/hole-cam', hole.HoleAnalysisHandler),
-    (r'/cassini/hole-cam/UpdateDb', hole.UpdateHoleDbHandler)
+    (r'/cassini/hole-cam', hole.HoleMainHandler),
+    (r'/cassini/hole-cam/UpdateDb', hole.UpdateHoleDbHandler),
+    (r'/cassini/detections.html', hole.HoleAnalysisHandler),
+    
+    
+    #temp handlers
+    (r'/cassini/temperatures.html', temperatures.TempAnalysisHandler),
+    
+    (r'/cassini/login', base.LoginHandler),
+    (r'/cassini/index-new.html', base.IndexHandler)
+    
+    
 ]

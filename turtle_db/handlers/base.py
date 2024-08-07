@@ -17,6 +17,9 @@ import os
 from dateutil import parser
 import pandas as pd
 import re
+import base64
+
+
 
 WEBCONNS = []
 
@@ -24,8 +27,38 @@ WEBCONNS = []
 def get_connections():
     return WEBCONNS
 
+class BaseHandler(tornado.web.RequestHandler):
+    
+    def prepare(self):
 
-class MainHandler(tornado.web.RequestHandler):
+        auth_header = self.request.headers.get('Authorization', None)
+
+        if auth_header is None or not auth_header.startswith('Basic '):
+            self.set_header('WWW-Authenticate', 'Basic realm="Restricted"')
+            #self.redirect("/cassini/login")
+            return
+            #raise tornado.web.HTTPError(401)
+
+
+        # Decode the credentials
+        auth_decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
+        username, password = auth_decoded.split(':', 1)
+
+        if username == "scott" and password == "scottandjosieforever":
+            pass
+        else:
+            self.set_header('WWW-Authenticate', 'Basic realm="Restricted"')
+            raise tornado.web.HTTPError(401)
+
+    def get_current_user(self):
+        return self.get_signed_cookie("user")
+
+class IndexHandler(BaseHandler):
+    
+    def get(self):
+        self.render('index.html')
+
+class MainHandler(BaseHandler):
 
     name = "Home"
 
@@ -62,14 +95,14 @@ class MainHandler(tornado.web.RequestHandler):
 
         if isMobile:
             self.render(
-                    'index.html',
+                    'index-old.html',
 
                     **pageinfo
                )
 
         else:
             self.render(
-                    'index.html',
+                    'index-old.html',
                     **pageinfo
                )
 
@@ -498,6 +531,26 @@ class DetectHandler(MainHandler):
                 imgs=imgs,
                 )
 
+
+class LoginHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write('<html><body><form action="/cassini/login" method="post">'
+                   'Name: <input type="text" name="name">'
+                   'Password: <input type="password" name="password">'
+                   '<input type="submit" value="Sign in">'
+                   '</form></body></html>')
+
+    def post(self):
+        user = self.get_argument("name")
+        password = self.get_argument("password")
+        if user == "scott" and password == "scottandjosieforever":
+            
+            self.set_signed_cookie("user", self.get_argument("name"), max_age_days=1)
+            self.redirect("/cassini/shed-cam")
+        else:
+            self.set_header('WWW-Authenticate', 'Basic realm="Restricted"')
+            raise tornado.web.HTTPError(401)
+
 class EdgeCaseHandler(MainHandler):
     
     def get(self):
@@ -541,3 +594,25 @@ class ImageHandler(tornado.web.StaticFileHandler):
 
     def get_absolute_path(self, root, path):
         return os.path.join(self.dirname, path)
+
+
+
+class BasicAuthMixin:
+    def prepare(self):
+        auth_header = self.request.headers.get('Authorization')
+        if auth_header is None or not auth_header.startswith('Basic '):
+            self._request_authentication()
+        else:
+            auth_decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
+            username, password = auth_decoded.split(':', 1)
+            if not self.check_credentials(username, password):
+                self._request_authentication()
+
+    def check_credentials(self, username, password):
+        # Replace with your username and password validation logic
+        return username == 'scott' and password == 'scottandjosieforever'
+
+    def _request_authentication(self):
+        self.set_header('WWW-Authenticate', 'Basic realm=Restricted')
+        self.set_status(401)
+        self.finish()

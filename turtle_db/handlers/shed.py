@@ -1,6 +1,8 @@
 from tornado.web import RequestHandler
 from tornado.web import StaticFileHandler
+from tornado.web import authenticated
 from pathlib import Path
+from .base import BaseHandler, BasicAuthMixin
 from ..db import get_dataframe, shed_camera, mksession, HAS_TURTLE
 import pandas as pd
 import json
@@ -19,11 +21,15 @@ class TurtleEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-class ShedAnalysisHandler(RequestHandler):
+class AuthenticatedStaticFileHandler(BasicAuthMixin, StaticFileHandler):
+    pass
 
+class ShedAnalysisHandler(BaseHandler):
+    @authenticated
     def get(self):
         self.render("shed-cam.html")
-        
+    
+    @authenticated
     def post(self):
         data = json.loads(self.request.body.decode('utf-8'))
         if 'timestamp' in data:
@@ -70,8 +76,8 @@ class ShedAnalysisHandler(RequestHandler):
         self.write(df.to_dict())
         
         
-class UpdateShedDbHandler(RequestHandler):
-    
+class UpdateShedDbHandler(BaseHandler):
+    @authenticated
     def get(self):
         
         timestamp = int(self.get_argument('timestamp'))-60*1000
@@ -87,7 +93,7 @@ class UpdateShedDbHandler(RequestHandler):
         
         
         
-    
+    @authenticated
     def post(self):
         data = json.loads(self.request.body.decode('utf-8'))
         logging.error(data)

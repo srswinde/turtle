@@ -1,63 +1,165 @@
-{% extends "base.html" %}
-{% block title %} Cassini's Home{% end %}
-{% block head %}
-
-		<script src="{{ static_url('js/plotly-latest.min.js') }}"></script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <style>
-      div#container
-      {
-        padding:10px;
-      }
-			div#top	
-		  {
-				display:flex;
-				justify-content:center;
-			}
-			div#plot_container
-			{
-				padding-top:20px;
-			}
-			div#conditions
-			{
-				display:inline-block;
-				padding: 20px;
-			}
-			div#plot
-			{		
-			}
-      img#mainpic
-      {
-        margin-bottom:20px;
-      }
       span.detections
       {
         display:inline-block;
         margin:10px;
-        width: 250px;
+        width: 275px;
         border: 1px solid black;
-        height: 150px;
+        height: 200px;
         padding: 10px;
       }
       a.day-box
       {
         font-size: 24px;
+        margin: 10px;
       }
+      img.day-box-img
+      {
+        display: block;
+        margin: 0 auto;
+        padding-top:20px;
+      }
+    span.day-name
+    {
+        text-align: center;
+        font-size: 24px;
+        margin: 10px;
+
+    }
     </style>
+	<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
 
-		<script>
+        async function main() {
+            await getImage();
+            await PlotTemps();
+            await getCassiniDetections();
+        }
+        async function getImage() {
+            const response = await fetch('/cassini/hole-cam', {method: 'POST'});
+
+            if (!response.ok) {
+                console.error('Failed to fetch image');
+                return;
+            }
+            const data = await response.json();
+
+            var img_paths = Object.keys(data['path']);
+            var img = document.querySelector('img');
+            img.src = data['path'][img_paths[img_paths.length - 1]];
+            console.log(img.src);
+
+            window.setTimeout(getImage, 5000);
+            
+        }
+
+        async function PlotTemps()
+        {
+            const data = await CollectTemps();
+            let ambient_trace = null;
+            let underground_trace = null;
+            if('ambient' in data)
+            {
+                const timestamps = Object.values(data['ambient']['timestamp']);
+                const temperatures = Object.values(data['ambient']['temp']);
+                console.log(timestamps.map(ts => (ts*1000)));
+                ambient_trace = {
+                    x: timestamps.map(ts => new Date(parseInt(ts*1000))),
+                    y: temperatures,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Ambient Temperature'
+                };
+
+            }
+            else
+            {
+                console.error('No ambient data found');
+            }
+
+            if('underground' in data)
+            {
+                const timestamps2 = Object.values(data['underground']['timestamp']);
+                const temperatures2 = Object.values(data['underground']['temp']);
+
+                underground_trace = {
+                    x: timestamps2.map(ts => new Date(parseInt(ts*1000))),
+                    y: temperatures2,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Underground Temperature'
+                };
+            }
+            else
+            {
+                console.error('No underground data found');
+            }
+
+            const layout = {
+                title: 'Temperature Time Series',
+                xaxis: {
+                    title: 'Timestamp'
+                },
+                yaxis: {
+                    title: 'Temperature (°F)'
+                }
+            };
+		
+	    if(ambient_trace || underground_trace)
+	    {
+            	Plotly.newPlot('plotly-plot', [ambient_trace, underground_trace], layout);
+	    }
+        }
+
+        async function CollectTemps() {
+            let response = await fetch('temperatures.html', 
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        'timestamp': Date.now()
+                    })
+                }
+            );
+            let data = await response.json();
+            console.log(data);
+            return data;
+        }
 
 
-			const main = () => {
-                init()
+        function getMaxProb(data)
+        {
+            let maxProb = 0;
+            let maxDate = null;
+            for (const group in data)
+            {
+                for (const ii in data[group]['prob'])
+                {
+                    if (data[group]['prob'][ii] > maxProb)
+                    {
+                        maxProb = data[group]['prob'][ii];
+                        maxIndex = ii;
+                        maxDate = new Date(parseInt(ii));
+                        groupMax = group;
+                    }
+                }
+            }
+            console.log(groupMax, maxProb);
+            return data[groupMax]['url'][maxIndex];
 
-                getCassiniDetections();
-			}
+        }
 
-
-            const getCassiniDetections = async () => {
+        const getCassiniDetections = async () => {
                 let now = new Date()
-                const url = `/cassini/playground`;
+                const url = `/cassini/detections.html`;
                 
                 for (var i=0; i<7; i++)
                 {
@@ -79,12 +181,21 @@
                         },
                         body: JSON.stringify({'date': date.toDateString()}) 
                     })
-                    const dayElement = document.createElement('h2');
+                    const dayElement = document.createElement('span');
                     dayElement.innerHTML = dayString;
+                    dayElement.classList.add('day-name')
                     displayElement.appendChild(dayElement);
                     const atag = document.createElement('a');
                     displayElement.appendChild(atag);
                     atag.classList.add('day-box')
+
+                    const imgElement = document.createElement('img');
+                    imgElement.setAttribute('height', '150');
+                    imgElement.setAttribute('width', '225');
+                    imgElement.setAttribute('alt', 'Image');
+                    imgElement.classList.add('day-box-img')
+                    displayElement.appendChild(imgElement);
+
                     if (!response.ok) 
                     {
                         
@@ -94,14 +205,18 @@
                     else
                     {
                         const responseData = await response.json();
+                        console.log(responseData);
                         if (Object.keys(responseData).length == 0)
                         {
                             atag.innerHTML = `No Cassini Activity`;
                         }
                         else
                         {
+                            let headline_image = getMaxProb(responseData);
+                            console.log(headline_image);
                             atag.innerHTML = `${Object.keys(responseData).length} Sightings`;
-                            atag.setAttribute('href', `/cassini/playground?date=${date.toDateString()}`);
+                            atag.setAttribute('href', `/cassini/detections.html?date=${date.toDateString()}`);
+                            imgElement.src = headline_image;
                         }
                         atag.classList.add('sighting')
 
@@ -111,251 +226,33 @@
 
             }
 
-			const foo = (INDI) => {
-				console.log(`recvd ${INDI.name}`)
-			}
 
-
-
-		DATA = null;
-        LATEST_IMAGES=[];
-        THIS_IMAGE = 0;
-        function init()
-        {
-            console.log("init")
-            
-            var protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-            var ws = new WebSocket(protocol + document.location.host + "/cassini/websocket");
-            ws.onmessage = function(msg)
-            {
-                console.log("data")
-
-                data = JSON.parse(msg.data)
-                if("temp" in data)
-                {
-                    $('h2#temp').html(Math.round(data['temp']['temp']*10)/10+"&deg F")
-                    if(data['temp']['temp'] > 90 )
-                    {
-                    $('h2#temp').css('color', 'red')
-                    }
-                    else if(data['temp']['temp'] < 65 )
-                    $('h2#temp').css('color', 'blue')
-                    $('h2#humid').html(Math.round(data['temp']['humid'])+" %")
-                    var plot = document.getElementById('plot');
-                    if(DATA ===  null)
-                    {
-                    DATA={};
-                    return;
-                    }
-                    DATA['timestamp'].push( data['temp']["timestamp"] );
-                    DATA['temp'].push( data['temp']["temp"] );
-                    DATA['humid'].push( data['temp']["humid"] );
-
-                    
-                    Plotly.react(plot, [{
-                    x: DATA['timestamp'].map(function(val) {return new Date(val*1000)}),
-                    y: DATA["temp"]}], {
-                    margin: { t: 0 } })
-                    console.log( DATA['timestamp'][DATA['timestamp'].length-1])
-                    console.log( DATA['temp'][DATA['timestamp'].length-1])
-                }
-                if("home_image" in data)
-                {
-                    console.log("HOME IMAGE")
-                    let len = LATEST_IMAGES.length
-
-                    $("img#mainpic").attr('src', data['home_image']['name']);
-                    if(len < 3)
-                    {
-                        LATEST_IMAGES[0] = data["home_image"];
-                    }
-
-                    else
-                    {
-                        LATEST_IMAGES.shift(data["home_image"])
-                    }
-
-                    $("img#mainpic").attr('src', data['home_image']['name']);
-                    $("h2#imagets").text(`Latest Image (${data['home_image']['time']})`)
-                }
-                else if("backyard_image" in data)
-                {
-                    console.log("BACKYARD IMAGE")
-                    console.log(data['backyard_image']['name'])
-                    $("img#backpic").attr('src', data['backyard_image']['name']);
-                }
-                else if("tanspot_image" in data)
-                {
-                    console.log(data['tanspot_image']['name'])
-                    $("img#tanspot").attr('src', data['tanspot_image']['name']);
-                }
-
-
-            }
-                    
-
-            $.ajax({
-                url:"/cassini/db/images/recent",
-                
-            }).done(function(data) {
-                var plot = document.getElementById('plot');
-                Plotly.newPlot( plot, [{
-                    x: data['timestamp'].map(function(val) {return new Date(val*1000)}),
-                    y: data["prob"], 
-                    mode: 'markers'
-                    }], 
-                    {
-                        //margin: { t: 0 },
-                    } 
-                );
-                document.getElementById('plot').on('plotly_click', function(data){
-                    var point = data.points[0];
-                    var idx = point.pointIndex;
-                    console.log(point.data.x[idx]);
-                    recent_detect(point.data.x[idx])
-                });
-            })
-
-            }
-
-
-			function update_graph()
-			{
-					$.ajax({
-					url:"/cassini/db/images/recent",
-					
-				}).done(function(data) {
-					DATA['timestamp'].push(data['timestamp']);
-					DATA['temp'].push(data['temp']);
-          $('h2#temp').html(Math.round(data['temp']*10)/10+"&deg F")
-					$('h2#humid').html(Math.round(data['humid'])+" %")
-					var plot = document.getElementById('plot');
-					Plotly.newPlot( plot, [{
-						x: DATA['timestamp'],
-						y: DATA["temp"]}], {
-						margin: { t: 0 } } );
-						//window.setTimeout(100000, update_graph);
-				})
-			}
-            
-        $.ajax(
-        {
-            url:"/cassini/detect_intervals?hoursAgo=72",
-        }).done(function(data){
-            $("#detections").html("")
-            for(var bin of data['bins'])
-            {
-            const weekday = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-            var date = new Date(bin);
-            var day = weekday[date.getDay()];
-            var time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`
-            $("#detections").append(`<button class="btn btn-primary btn-lg" onclick="recent_detect(new Date('${bin}'))">${day} ${time}</button>`)
-                start = new Date(bin[0]*1000);
-                end = new Date(bin[1]*1000);
-                console.log(start)
-            }
-        })
-        function recent_detect(ts)
-        {
-            console.log(ts)
-            ts = ts.getTime()/1000;
-            $.ajax({
-            url:`/cassini/recent_detect?ts=${ts}`,
-            }).done(function(data) {
-                console.log(data['imgs']);
-                var imgs = data['imgs'];
-                console.log(imgs.length);
-                for(var i=0; (i<imgs.length) && (i<9); i++)
-                {
-                    var img = imgs[i];
-                    var url = img.url;
-                    var prob = img.prob;
-                    console.log(`url: ${url} prob: ${prob}`)
-                    var imgtag = document.getElementById(`img${i}`);
-                    imgtag.src = url;
-                    imgtag.title = `Probability: ${prob} @ ${new Date(imgs[i].timestamp*1000)}`;
-                    
-                }
-                
-            })
-        }
-
-     </script>
-     {% end %}
-
-  {% block body_main %}
-    <div id="container">	
-		<div>
-        <div>
-          <img id="cassini" src="{{ static_url('staticturtle/latest/latest.jpg') }}" height="425px" />
-            
-            <script>
-            </script>
-        </div>
-				<div id="conditions" style="display:inline-block">
-
-          <h2 id="imagets">
-            ...
-          </h2>
-
-
+        document.addEventListener('DOMContentLoaded', main);
+    </script>
+	<title>Cassini</title>
+</head>
+<body>
+	<div style="display: flex; margin: 10px;">
+		<div style="margin-right: 10px;">
+			<img alt="Image" height="400" width="600">
 		</div>
-
-        <div id="detections">
-            <h2>Cassini's Week</h2>
-            <span id="prevDay0" class="detections today"></span>
-            <span id="prevDay1" class="detections"></span>
-            <span id="prevDay2" class="detections"></span>
-            <span id="prevDay3" class="detections"></span>
-            <span id="prevDay4" class="detections"></span>
-            <span id="prevDay5" class="detections"></span>
-            <span id="prevDay6" class="detections"></span>
-        </div>
-                    
-            <div id="plot_container">
-  				<div id="plot" style="width:700px;height:350px;"></div>
-	    	</div>
-            <div>
-            <h1> Model Predictions </h1>
-            <div id="detections" style="max-width:680px"></div>
-                <table>
-                    <tr>
-                        <td>
-                            <img src="", height="160", width="213" id="img0">
-                        </td>
-                        <td>
-                            <img src="", height="160", width="213" id="img1">
-                        </td>
-                        <td>
-                            <img src="", height="160", width="213" id="img2">
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <img src="", height="160", width="213" id="img3">
-                        </td>
-                        <td>
-                            <img src="", height="160", width="213" id="img4">
-                        </td>
-                        <td>
-                            <img src="", height="160", width="213" id="img5">
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <img src="", height="160", width="213" id="img6">
-                        </td>
-                        <td>
-                            <img src="", height="160", width="213" id="img7">
-                        </td>
-                        <td>
-                            <img src="", height="160", width="213" id="img8">
-                        </td>
-                </table>
-            </div>
-			</div>
-
+		<div style="flex-grow: 1;">
+			<div id="plotly-plot" style="width: 100%; height: 400px;"></div>
 		</div>
+	</div>
 
-  {% end %}
+    <div id="detections">
+        <h2>Cassini's Week</h2>
+        <span id="prevDay0" class="detections today"></span>
+        <span id="prevDay1" class="detections"></span>
+        <span id="prevDay2" class="detections"></span>
+        <span id="prevDay3" class="detections"></span>
+        <span id="prevDay4" class="detections"></span>
+        <span id="prevDay5" class="detections"></span>
+        <span id="prevDay6" class="detections"></span>
+    </div>
 
+</body>
+
+
+</html>

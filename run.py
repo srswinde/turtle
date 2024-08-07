@@ -135,12 +135,12 @@ async def get_underground_temp():
         #r.set("underground_temp", temp)
         #r.publish("underground_temp", temp)
         
-        print(f"temp is {temp}")
+        session = db.mksession()
         for ii, (addr, temp) in enumerate(temp.items()):
             row = db.temp_sensors(timestamp=int(time.time()+ii), address=addr, temp=float(temp))
             
-        session = db.mksession()
-        session.add(row)
+            session.add(row)
+            
         session.commit()
         
         await asyncio.sleep(5.0)

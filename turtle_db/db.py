@@ -144,6 +144,23 @@ class hole_camera_metadata(Base):
     timestamp = Column(BigInteger, primary_key=True)
     is_human_detected = Column(Enum(HAS_HUMAN), default=HAS_HUMAN.NULL)
     is_motion_detected = Column(Enum(HAS_MOTION), default=HAS_MOTION.NULL)
+    
+class hole_camera_resnet_detection(Base):
+        
+    __tablename__="hole_camera_resnet_detection"
+    index = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(BigInteger)
+    model_name = Column(String(512))
+    path = Column(String(512))
+    prob = Column(Float)
+    class_name = Column(String(100))
+    class_number = Column(Integer)
+    x1 = Column(Float)
+    y1 = Column(Float)
+    x2 = Column(Float)
+    y2 = Column(Float)
+
+
 
 def log_temp_sensors(ip):
     rq = requests.get(f"http://{ip}/temps")
@@ -176,7 +193,7 @@ def build_imagedb():
     root_dir = Path('/mnt/turtle/imgs/2023')
     session = _model(bind=engine)
     rows = []
-    
+
     first = session.query(images).order_by(desc(images.timestamp)).first()
     last_image = first.timestamp if first else 0
         
