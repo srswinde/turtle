@@ -3,7 +3,7 @@ from tornado.web import StaticFileHandler
 from tornado.web import authenticated
 from pathlib import Path
 from .base import BaseHandler, BasicAuthMixin
-from ..db import get_dataframe, shed_camera, mksession, HAS_TURTLE
+from ..db import get_dataframe, shed_camera, mksession, HAS_TURTLE, shed_camera_resnet_detection
 import pandas as pd
 import json
 from tornado.escape import json_encode
@@ -59,22 +59,62 @@ class ShedAnalysisHandler(BaseHandler):
         regex = "snapshot_(\d{1,3})_(\d{1,3})_(\d{1,2})"
         path_with_position = df.path.str.contains(regex)
         
-        df = df[path_with_position].copy()
+        position = df[path_with_position].path.str.extractall(regex)
+        position.index = df[path_with_position].index
+
+        df['azimuth'] = -1
+        df['elevation'] = -1 
+        df['count'] = -1
+        df['azimuth'][path_with_position] = position[0].astype(int)
+        df['elevation'][path_with_position]= position[1].astype(int)
+        df['count'][path_with_position] = position[2].astype(int)
+
         
-        position = df.path.str.extractall(regex)
-        position.index = df.index
-        df['azimuth'] = position[0].astype(int)
-        df['elevation'] = position[1].astype(int)
-        df['count'] = position[2].astype(int)
+
         
         if len(df) == 0:
             logging.info(f"No data for {midnight}")
-        df = df[df.hasTurtle == HAS_TURTLE.NULL].copy()
+        #df = df[df.hasTurtle == HAS_TURTLE.NULL].copy()
         df.index = df.timestamp.apply(lambda x: x)
         df= df[['path', 'prob', 'azimuth', 'elevation', 'count']]
         df.path = df.path.str.replace('/mnt/nfs/shed-cam/', '/cassini/shed-cam/static/')
         self.write(df.to_dict())
         
+class ResnetHandler(BaseHandler):
+    @authenticated
+    def get(self):
+        self.render("shed-resnet.html")
+    
+    @authenticated
+    def post(self):
+        data = json.loads(self.request.body.decode('utf-8'))
+        if 'timestamp' in data:
+            try:
+                timestamp = parse(data['date'])
+            except TypeError:
+                timestamp = datetime.datetime.now()
+                logging.error(f"Invalid timestamp {data['date']}")
+            
+            
+        else:
+            timestamp = datetime.datetime.now()
+        
+        
+        midnight = datetime.datetime(timestamp.year, timestamp.month, timestamp.day)
+        next_midnight = midnight + datetime.timedelta(days=1)
+        
+        session = mksession()
+        query = session.query(shed_camera_resnet_detection)\
+            .filter(shed_camera_resnet_detection.timestamp > midnight.timestamp()*1000)\
+            .filter(shed_camera_resnet_detection.timestamp < next_midnight.timestamp()*1000)
+            
+        df = pd.read_sql(query.statement, query.session.bind)
+        df['url'] = df.path.str.replace('/mnt/nfs/shed-cam/', '/cassini/shed-cam/static/')
+        del df['path']
+        
+        self.write(df.to_dict())
+        
+
         
 class UpdateShedDbHandler(BaseHandler):
     @authenticated

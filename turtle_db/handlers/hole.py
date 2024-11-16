@@ -2,7 +2,7 @@ from tornado.web import RequestHandler
 from tornado.web import StaticFileHandler
 from pathlib import Path
 from ..db import get_dataframe, shed_camera, mksession, HAS_TURTLE
-from ..db import hole_camera, images
+from ..db import hole_camera, images, hole_camera_resnet_detection
 import pandas as pd
 import json
 from tornado.escape import json_encode
@@ -143,7 +143,7 @@ class HoleAnalysisHandler(RequestHandler):
             data = json.loads(self.request.body.decode('utf-8'))
         except json.JSONDecodeError:
             logging.error(f"Invalid JSON {self.request.body}")
-            data = []
+            data = {}
            
         if 'date' in data:
             try:
@@ -153,7 +153,19 @@ class HoleAnalysisHandler(RequestHandler):
         else:
             date = None
         
-        groups = self.detect_interval(date)
+        if 'minprob' in data:
+            minprob = float(data['minprob'])
+        else:
+            minprob = 0.70
+            
+        if 'interval_seconds' in data:
+            interval_seconds = int(data['interval_seconds'])
+        else:
+            interval_seconds = 300
+        
+        groups = self.detect_interval(date, 
+                                      grouping_time=interval_seconds, 
+                                      minprob=minprob)
         logging.info(groups)
         group_dict = dict()
         for group in groups.index.get_level_values(0).unique():
@@ -164,7 +176,7 @@ class HoleAnalysisHandler(RequestHandler):
             )
         self.write(group_dict)
     
-    def detect_interval(self, date=None, grouping_time=300, minprob=0.55):
+    def detect_interval(self, date=None, grouping_time=300, minprob=0.70):
         
         if date is None:
             date = datetime.datetime.now()
@@ -198,3 +210,52 @@ class HoleAnalysisHandler(RequestHandler):
         grouped.index.set_names('group', level=0, inplace=True)
         return grouped
     
+    
+class HoleResnetHandler(RequestHandler):
+    
+    def get(self):
+            
+            self.render('hole-resnet.html')
+        
+    
+    def post(self):
+        
+        try:
+            data = json.loads(self.request.body.decode('utf-8'))
+        except json.JSONDecodeError:
+            logging.error(f"Invalid JSON {self.request.body}")
+            data = {}
+           
+        if 'date' in data:
+            try:
+                date = parse(data['date'])
+            except ParserError:
+                print("bad date")
+                date = None
+        else:
+            date = None
+        
+
+        
+        if date is None:
+            date = datetime.datetime.now()
+        
+        print(date)
+        midnight = datetime.datetime(date.year, date.month, date.day)
+        next_midnight = midnight + datetime.timedelta(days=1)
+        
+        session = mksession()
+        query = session.query(hole_camera_resnet_detection)\
+            .filter(hole_camera_resnet_detection.timestamp > midnight.timestamp()*1000)\
+            .filter(hole_camera_resnet_detection.timestamp < next_midnight.timestamp()*1000)
+        
+        df = pd.read_sql(query.statement, query.session.bind)
+        df['url'] = df['path'].str.replace('/mnt/nfs/hole-cam/', '/cassini/hole-cam/static/')
+        del df['path']
+        
+        self.set_header("Content-Type", "application/json")
+        d = df.to_dict()
+        
+        
+        
+        self.write(d)

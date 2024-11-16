@@ -161,6 +161,17 @@ class hole_camera_resnet_detection(Base):
     y2 = Column(Float)
 
 
+class notifications(Base):
+    
+    __tablename__="notifications"
+    timestamp = Column(BigInteger, primary_key=True)
+    notification_type = Column(String(128))
+    detection_start = Column(BigInteger)
+    detection_end = Column(BigInteger)
+    message = Column(String(512))
+    start_notified = Column(Integer, default=0)
+    end_notified = Column(Integer, default=0)
+    
 
 def log_temp_sensors(ip):
     rq = requests.get(f"http://{ip}/temps")

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script> 
+    window.onload = async function() {
+        await main();
+    };
+    </script>
+
+    <style>
+        .img_span {
+            display: inline-block;
+            margin: 10px;
+            border: 1px solid black;
+            padding: 10px;
+            position: relative;
+        }
+
+        .no-cassini {
+            background-color: red;
+        }
+        .has-cassini {
+            background-color: green;
+            display: none;
+        }
+        .color_span {
+            display: inline-block;
+            margin: 5px;
+            padding: 5px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="plot"></div>
+    <div id="hider"></div>
+    <a id="show_url"></a>
+
+    <span id="image_detect">
+
+    </span>
+
+<script>
+
+WAIT_TIME = 0;
+
+async function Collect() {
+    //get uri defined timestamp
+    let timestamp = new URLSearchParams(window.location.search).get('timestamp');
+    console.log(timestamp);
+    if (timestamp == null) {
+        timestamp = Date.now();
+    }
+
+
+    let response = await fetch('', 
+        {
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({timestamp: timestamp})
+        });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    let data = await response.json();
+    return data;
+}
+
+var ColorToPosition = {
+    'red': [0, 0],
+    'blue': [0, 45],
+    'green': [90, 0],
+    'yellow': [90, 45],
+    'purple': [180, 0],
+    'orange': [180, 45],
+    'pink': [270, 0],
+    'brown': [270, 45],
+    'black': [0, 0]
+};
+
+function colorForPosition(el, az)
+{
+    for (const [key, value] of Object.entries(ColorToPosition)) {
+        if (value[0] == az && value[1] == el) {
+            return key;
+        }
+    }
+
+    
+}
+
+
+async function main() 
+{
+
+
+    let images = await Collect('');
+    var dates = Object.keys(images['prob']);
+    var prob = Object.values(images['prob']);
+    var files = Object.values(images['path']);
+
+
+
+    for(d in dates) {
+        dates[d] = new Date(parseInt(dates[d]));
+    }
+    console.log(dates[0])
+    // Create the trace
+    var trace = {
+        x: dates,
+        y: prob,
+        mode: 'markers',
+        type: 'scatter',
+    };
+
+    // Create the data array
+    var data = [trace];
+    // Create the layout
+    var layout = {
+        title: 'Time Series Plot',
+        xaxis: {
+            title: 'Date',
+            showgrid: false,
+            zeroline: false
+        },
+        yaxis: {
+            title: 'Value',
+            showline: false
+        },
+
+    };
+
+    // Create the plot
+    Plotly.newPlot('plot', data, layout);
+
+    // Add event handler for click events
+    var myPlot = document.getElementById('plot');
+    myPlot.on('plotly_click',async function(data){
+        var idx = data.points[0].pointIndex;
+        var x = data.points[0].x;
+        var y = data.points[0].y;
+
+       
+        console.log();
+        CollectUncategorized(dates[idx].getTime());
+        
+    });
+
+}
+    async function CollectUncategorized(timestamp) {
+
+        let response = await fetch(`/cassini/hole-cam/UpdateDb?timestamp=${timestamp}`, {method: 'GET', headers: {'Content-Type': 'application/json'}});
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        let data = await response.json();
+        data_length = Object.keys(data['path']).length;
+        let img_container = document.getElementById('image_detect');
+        // clear all children
+        while (img_container.firstChild) {
+            img_container.removeChild(img_container.firstChild);
+        }
+        for (let i = 0; i < data_length; i++) {
+            let img_span = document.createElement('span');
+            img_span.classList.add('img_span');
+
+            img_span.dataset.path = data['path'][i];
+            img_span.dataset.prob = data['prob'][i];
+            img_span.dataset.timestamp = data['timestamp'][i];
+
+
+            let img = document.createElement('img');
+            img.src = data['path'][i];
+            img.width = 300;
+            img.height = 200;
+
+            img_span.appendChild(img);
+
+            let img_info = document.createElement('div');
+            let prob_info = document.createElement('p');
+            prob_info.innerHTML = data['prob'][i].toFixed(3);
+            img_info.appendChild(prob_info);
+
+            let has_cassini_button = document.createElement('button');
+            has_cassini_button.innerHTML = 'Cassini';
+            has_cassini_button.classList.add('has-cassini');
+            img_info.appendChild(has_cassini_button);
+
+
+            let is_not_cassini_button = document.createElement('button');
+            is_not_cassini_button.innerHTML = 'No Cassini';
+            is_not_cassini_button.classList.add('no-cassini');
+            is_not_cassini_button.addEventListener('click', NotCassiniClick);
+            img_info.appendChild(is_not_cassini_button);
+
+            img_span.classList.add('img_info');
+            img_span.appendChild(img_info);
+            img_container.appendChild(img_span);
+
+            img.addEventListener('click',async function(e) {
+                // Get the bounding rectangle of the image
+                var rect = img.getBoundingClientRect();
+
+                // Calculate the x and y coordinates relative to the image
+                var x = e.clientX - rect.left;
+                var y = e.clientY - rect.top;
+                
+                //normailize x and y
+                x = x / rect.width;
+                y = y / rect.height;
+
+                e.target.parentElement.dataset.x = x;
+                e.target.parentElement.dataset.y = y;
+                e.target.parentElement.dataset.has_cassini = true;
+
+                // make all elements fade out
+                e.target.parentElement.style.opacity = 0.5;
+
+                // add cancel button in center of image
+                let cancel_button = document.createElement('button');
+                cancel_button.innerHTML = 'Cancel';
+                cancel_button.classList.add('cancel_button');
+                cancel_button.style.position = 'absolute';
+                cancel_button.style.top = '50%';
+                cancel_button.style.left = '50%';
+
+                cancel_button.addEventListener('click', function (){
+                    event.target.parentElement.style.opacity = 1;
+                    event.target.addEventListener('click', NotCassiniClick);
+                    event.target.style.pointerEvents = 'auto';
+                    cancel_button.remove();
+                });
+                
+                e.target.parentElement.appendChild(cancel_button);
+
+                //wait 5 seconds before loading more images
+                await new Promise(r => setTimeout(r, 5000));
+
+                await UpdateDb(e.target.parentElement);
+
+
+                // hide image if it has been classified
+                if (e.target.parentElement.style.opacity == 0.5) {
+                    e.target.parentElement.style.display = 'none';
+                }
+
+
+            });
+
+    }
+
+    function GetImageData(img_span) {
+        
+        let data = {};
+        data['path'] = img_span.dataset.path;
+        data['prob'] = img_span.dataset.prob;
+        data['timestamp'] = parseInt(img_span.dataset.timestamp);
+
+        if (img_span.dataset.has_cassini == 'true') {
+            data['x'] = parseFloat(img_span.dataset.x);
+            data['y'] = parseFloat(img_span.dataset.y);
+            data['has_turtle'] = true;
+
+        } else {
+            data['has_turtle'] = false;
+            
+        }
+        
+        return data;
+    }
+
+    async function UpdateDb(img_span) {
+        let data = GetImageData(img_span);
+        let json_data = JSON.stringify(data);
+        let response = await fetch('/cassini/hole-cam/UpdateDb', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: json_data
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        //return await response.json();
+    }
+
+    async function NotCassiniClick(event) {
+        console.log(GetImageData(event.target.parentElement.parentElement));
+        // make all elements fade out
+        event.target.parentElement.parentElement.style.opacity = 0.5;
+
+        // add cancel button in center of image
+        let cancel_button = document.createElement('button');
+        cancel_button.innerHTML = 'Cancel';
+        cancel_button.classList.add('cancel_button');
+        cancel_button.style.position = 'absolute';
+        cancel_button.style.top = '50%';
+        cancel_button.style.left = '50%';
+        
+        cancel_button.addEventListener('click', function() {
+            event.target.parentElement.parentElement.style.opacity = 1;
+            event.target.addEventListener('click', NotCassiniClick);
+            event.target.style.pointerEvents = 'auto';
+            cancel_button.remove();
+        });
+
+
+        event.target.parentElement.appendChild(cancel_button);
+        //stop all other events from happening and disable button
+        event.target.removeEventListener('click', NotCassiniClick);
+        event.target.style.pointerEvents = 'none';
+
+        // wait another 5 seconds before loading more images
+        await new Promise(r => setTimeout(r, WAIT_TIME));
+
+        await UpdateDb(event.target.parentElement.parentElement);
+
+        console.log("here")
+
+
+        // hide image if it has been classified as not cassini
+        if (event.target.parentElement.parentElement.style.opacity == 0.5) {
+            event.target.parentElement.parentElement.style.display = 'none';
+        }
+
+
+    }
+
+}
+</script>
+
+</body>
+</html>

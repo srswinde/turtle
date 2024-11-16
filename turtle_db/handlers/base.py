@@ -545,7 +545,7 @@ class LoginHandler(tornado.web.RequestHandler):
         password = self.get_argument("password")
         if user == "scott" and password == "scottandjosieforever":
             
-            self.set_signed_cookie("user", self.get_argument("name"), max_age_days=1)
+            self.set_signed_cookie("user", self.get_argument("name"), expires_days=1)
             self.redirect("/cassini/shed-cam")
         else:
             self.set_header('WWW-Authenticate', 'Basic realm="Restricted"')

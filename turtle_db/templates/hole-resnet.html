@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resent Detection</title>
+    <style>
+        #container {
+            position: relative;
+            display: inline-block;
+        }
+        #image {
+            display:inline-block;
+        }
+        .image-container {
+            position: relative;
+            display: inline-block;
+        }
+        .box {
+            position: absolute;
+            border: 2px solid red;
+            pointer-events: none; /* Prevents the box from interfering with clicks on the image */
+            font-weight: bolder;
+            color: red;
+        }
+    </style>
+    <script>
+
+
+        async function main() 
+        {
+            let data = await getData();
+            const container = document.getElementById('container');
+            let ii=0;
+            for(let [idx, url] of Object.entries(data.url))
+            {
+                let imgContainer = document.createElement('div');
+                imgContainer.className = 'image-container';
+
+                let img = document.createElement('img');
+                img.src = url;
+                img.id = 'image';
+                img.height = 324;
+                img.width = 432;
+
+                let x1 = 432*data.x1[idx]/300;
+                let y1 = 324*data.y1[idx]/300;
+                let x2 = 432*data.x2[idx]/300;
+                let y2 = 432*data.y2[idx]/300;
+
+
+                // Create the box element
+                let box = document.createElement('div');
+                box.className = 'box';
+                box.style.left = `${x1}px`;
+                box.style.top = `${y1}px`;
+                box.style.width = `${x2-x1}px`;
+                box.style.height = `${y2-y1}px`;
+                box.textContent = data.class_name[idx];
+                                // Append the image and the box to the container
+                imgContainer.appendChild(img);
+                imgContainer.appendChild(box);
+                container.appendChild(imgContainer);
+                ii++;
+                if(ii > 20)
+                {
+                    break;
+                }
+
+            }
+            
+        }
+
+        // get data from the post request
+        async function getData() 
+        {
+            let timestamp = new URLSearchParams(window.location.search).get('date');
+            if (timestamp == null) 
+            {
+                timestamp = new Date();
+                timestamp = timestamp.toLocaleDateString();
+            }
+            let response = await fetch('', 
+                {
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({date: timestamp}) // send the date as a string
+                }
+            );
+
+            if (!response.ok) 
+            {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            let data = await response.json();
+            return data;
+        }
+
+        document.addEventListener('DOMContentLoaded', main);
+    </script>
+</head>
+<body>
+
+<div id="container">
+</div>
+
+<script>
+    function drawSquare(x1, y1, x2, y2) {
+        tx = 2592/300;
+        ty = 1944/300;
+        const square = document.getElementById('square');
+        square.style.left = x1*tx + 'px';
+        square.style.top = y1*ty + 'px';
+        square.style.width = (x2-x1)*tx + 'px';
+        square.style.height = (y2-y1)*ty + 'px';
+    }
+
+    // Example usage: Draws a 100x100 square at (50, 50)
+    drawSquare(139, 127, 201, 188);
+</script>
+
+</body>
+</html>

@@ -30,10 +30,13 @@ url_patterns = [
     # Shed handlers
     (r'/cassini/shed-cam', shed.ShedAnalysisHandler),
     (r'/cassini/shed-cam/UpdateDb', shed.UpdateShedDbHandler),
+    (r'/cassini/shed-cam/resnet', shed.ResnetHandler),
+    
     #hole handlers
     (r'/cassini/hole-cam', hole.HoleMainHandler),
     (r'/cassini/hole-cam/UpdateDb', hole.UpdateHoleDbHandler),
     (r'/cassini/detections.html', hole.HoleAnalysisHandler),
+    (r'/cassini/hole-cam/resnet', hole.HoleResnetHandler),
     
     
     #temp handlers
