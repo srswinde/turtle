@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+        async function main() {
+            data = await Collect();
+            const addrs = Object.keys(data);
+            let success = 0;
+            let trace1 = {};
+            let trace2 = {};
+            if(('ambient' in data)) 
+            {
+                const timestamps = Object.values(data['ambient']['timestamp']);
+                const temperatures = Object.values(data[addrs[0]]['temp']);
+                console.log(timestamps.map(ts => (ts*1000)));
+                trace1 = {
+                    x: timestamps.map(ts => new Date(parseInt(ts*1000))),
+                    y: temperatures,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Ambient Temperature'
+                };
+
+                const layout = {
+                    title: `Temperature Time Series ${addrs[0]}`,
+                    xaxis: {
+                        title: 'Timestamp'
+                    },
+                    yaxis: {
+                        title: 'Temperature (°F)'
+                    }
+                };
+                success++;
+                Plotly.newPlot('plotly-plot1', [trace1], layout);
+            }
+            else 
+            {
+                console.error('No ambient data found');
+            }
+            
+
+            // do it again for the second plot
+            if(('underground' in data))
+            {
+                const timestamps2 = Object.values(data['underground']['timestamp']);
+                const temperatures2 = Object.values(data['underground']['temp']);
+
+                trace2 = {
+                    x: timestamps2.map(ts => new Date(parseInt(ts*1000))),
+                    y: temperatures2,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Underground Temperature'
+                };
+
+                const layout2 = {
+                    title: `Temperature Time Series ${addrs[1]}`,
+                    xaxis: {
+                        title: 'Timestamp'
+                    },
+                    yaxis: {
+                        title: 'Temperature (°F)'
+                    }
+                };
+                success++;
+                Plotly.newPlot('plotly-plot2', [trace2], layout2);
+            }
+            else 
+            {
+   
+                console.error('No underground data found');   
+            }
+
+            if(success == 2)
+            {
+             // Create the combined plot
+                const combinedLayout = {
+                    title: 'Combined Temperature Time Series',
+                    xaxis: {
+                        title: 'Timestamp'
+                    },
+                    yaxis: {
+                        title: 'Temperature (°F)'
+                    }
+                };
+
+                Plotly.newPlot('plotly-plot3', [trace1, trace2], combinedLayout);
+            }
+            else 
+            {
+                console.error('Could not create combined plot');
+            }
+
+        }
+
+        async function Collect() {
+            const url = new URL(window.location.href)
+	    const url_params = new window.URLSearchParams(url.search)
+	    const timestamp = url_params.get('timestamp');
+	    
+	    console.log(url_params.entries())
+            let response = await fetch('', 
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        'timestamp': timestamp
+                    })
+                }
+            );
+            let data = await response.json();
+            console.log(data);
+            return data;
+        }
+
+        document.addEventListener('DOMContentLoaded', main);
+    </script>
+	<title>Temperature Sensors</title>
+</head>
+<body>
+	<div id="plotly-plot1" style="width: 100%; height: 400px;"></div>
+	<div id="plotly-plot2" style="width: 100%; height: 400px;"></div>
+	<div id="plotly-plot3" style="width: 100%; height: 400px;"></div>
+</body>
+</html>

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hole ResNet Train</title>
+    <style>
+        #container {
+            position: relative;
+            display: inline-block;
+        }
+        #image {
+            display:inline-block;
+        }
+        .image-container {
+            position: relative;
+            display: inline-block;
+        }
+        .box {
+            position: absolute;
+            border: 2px solid red;
+            pointer-events: none; /* Prevents the box from interfering with clicks on the image */
+            font-weight: bolder;
+            color: red;
+        }
+        .widget-container {
+            margin:10px;
+            border: 1px solid black;
+            display: inline-block;
+
+        }
+        .bounding-box 
+        {
+            border: 2px solid red;
+            position: absolute;
+            background: rgba(255, 0, 0, 0.2);
+        }
+        .reset-button {
+            display:none;
+        }
+        .submit-button {
+            display:inline-block;
+        }
+        
+        .compass-container {
+            display:block;
+        }
+
+    .direction {
+        width: 30%;
+        height: 30%;
+        margin: 2%;
+        text-align: center;
+        line-height: 2;
+        background-color: rgba(255, 255, 255, 0.8);
+        cursor: pointer;
+        pointer-events: all; /* Allow compass elements to be clickable */
+        transition: background-color 0.3s ease;
+    }
+
+    .direction:hover {
+        background-color: #ff6347; /* Highlight color on hover */
+    }
+      svg {
+    /*transform-origin: 100px 100px; /* Adjust the rotation point */
+    
+    }
+    .compass {
+        transform: rotateX(70deg) rotateY(0deg);
+        margin-top:-50px;
+        margin-bottom:-50px;
+    }
+    .highlightable:hover {
+      fill: red;
+    }
+    .submit-button {
+        position:absolute;
+        margin-top: 50px;
+        margin-left: 30px;
+    }
+
+    </style>
+    <script>
+        let currentBox = null;
+        let currentImage = null;
+        let currentContainerRect = null;
+
+        WIDGET_STATE = {
+            bbox: 0b01,
+            direction: 0b10
+        }
+
+        async function collect(timestamp)
+        {
+            let response = await fetch("", {
+                method: 'POST',
+                body: JSON.stringify({date: timestamp}),
+
+            });
+
+            let data = await response.json();
+            return data;
+        }
+
+        function isToday(date) {
+            const today = new Date();
+            return date.getDate() === today.getDate() &&
+                date.getMonth() === today.getMonth() &&
+                date.getFullYear() === today.getFullYear();
+        }
+
+        function mouseDown(event)
+        {
+            //Delete any previous boxes
+            currentImage = event.currentTarget;
+            currentImage.querySelectorAll('.bounding-box').forEach(e => e.remove());
+            // Calculate the starting position relative to the image container
+            startX = event.offsetX;
+            startY = event.offsetY;
+
+            currentContainerRect = currentImage.getBoundingClientRect();
+            // Create a new bounding box element
+            currentBox = document.createElement('div');
+            currentBox.classList.add('bounding-box');
+            currentBox.style.left = `${startX}px`;
+            currentBox.style.top = `${startY}px`;
+
+            currentImage.appendChild(currentBox);
+
+            // Set up mouse move event for drawing
+            currentImage.addEventListener('mousemove', mouseMove);
+            currentImage.addEventListener('mouseup', mouseUp);  
+
+        }
+
+        function mouseMove(event) 
+        {
+            // Calculate current width and height based on mouse movement
+            const currentX = event.clientX - currentContainerRect.left;
+            const currentY = event.clientY - currentContainerRect.top;
+            const width = currentX - startX;
+            const height = currentY - startY;
+
+            // Update the bounding box dimensions
+            currentBox.style.width = `${Math.abs(width)}px`;
+            currentBox.style.height = `${Math.abs(height)}px`;
+
+            // Adjust position if dragging upwards or to the left
+            if (width < 0) {
+                currentBox.style.left = `${currentX}px`;
+            }
+            if (height < 0) {
+                currentBox.style.top = `${currentY}px`;
+            }
+        }
+
+        function mouseUp(event)
+        {
+            // Remove the mouse move event listener
+            currentImage.removeEventListener('mousemove', mouseMove);
+            
+            setWidgetState(event.currentTarget.parentNode, WIDGET_STATE.bbox);
+        }
+
+        function createCompassRose() 
+        {
+            const svgNS = "http://www.w3.org/2000/svg";
+
+            // Create SVG element
+            const svg = document.createElementNS(svgNS, "svg");
+            svg.setAttribute("viewBox", "0 0 200 200");
+            svg.setAttribute("width", "200");
+            svg.setAttribute("height", "200");
+
+            // Add style
+            const style = document.createElementNS(svgNS, "style");
+            style.textContent = ".highlightable:hover { stroke: red; }";
+            svg.appendChild(style);
+
+            // Create marker for arrowheads
+            const defs = document.createElementNS(svgNS, "defs");
+            const marker = document.createElementNS(svgNS, "marker");
+            marker.setAttribute("id", "arrowhead");
+            marker.setAttribute("markerWidth", "10");
+            marker.setAttribute("markerHeight", "7");
+            marker.setAttribute("refX", "5");
+            marker.setAttribute("refY", "3.5");
+            marker.setAttribute("orient", "auto");
+
+            const polygon = document.createElementNS(svgNS, "polygon");
+            polygon.setAttribute("points", "0 0, 10 3.5, 0 7");
+            polygon.setAttribute("fill", "black");
+            marker.appendChild(polygon);
+            defs.appendChild(marker);
+            svg.appendChild(defs);
+
+            // Create group for compass rose
+            const g = document.createElementNS(svgNS, "g");
+            //g.setAttribute("transform", "rotate(45, 100, 100)");
+
+            // Create circle
+            const circle = document.createElementNS(svgNS, "circle");
+            circle.setAttribute("cx", "100");
+            circle.setAttribute("cy", "100");
+            circle.setAttribute("r", "98");
+            circle.setAttribute("fill", "white");
+            circle.setAttribute("stroke", "black");
+            circle.setAttribute("stroke-width", "4");
+            g.appendChild(circle);
+
+            // Create lines for cardinal directions
+            let directions = [];
+            let count = 6;
+            for (let i = 0; i < 360; i += 45) {
+                const x1 = 100 
+                const y1 = 100 
+                const x2 = 100 + 100 * Math.cos(i * Math.PI / 180);
+                const y2 = 100 + 100 * Math.sin(i * Math.PI / 180);
+                
+                const angle = i;
+                count = count % 8;
+                directions.push({ x1, y1, x2, y2, count });
+                count++;
+            }
+
+
+            directions.forEach(direction => {
+                let line = document.createElementNS(svgNS, "line");
+                line.setAttribute("class", "highlightable");
+                line.setAttribute("x1", direction.x1);
+                line.setAttribute("y1", direction.y1);
+                line.setAttribute("x2", direction.x2);
+                line.setAttribute("y2", direction.y2);
+                line.setAttribute("stroke", "rgba(0, 0, 0, 0.8)");
+                line.setAttribute("stroke-width", "10");
+                line.setAttribute("fill", "none");
+                line.addEventListener("click", function(event) {
+                    const theG = event.currentTarget.parentElement;
+                    theG.querySelectorAll("line").forEach(line => {
+                        line.setAttribute("stroke", "rgba(0, 0, 0, 0.8)");
+                        line.dataset.selected = "false";
+                    });
+
+                    setWidgetState(event.currentTarget.parentNode.parentNode.parentNode.parentNode, WIDGET_STATE.direction);
+                    event.currentTarget.setAttribute("stroke", "red");
+                    event.currentTarget.dataset.selected = "true";
+                });
+                line.dataset.dir = direction.count;
+                //line.setAttribute("marker-end", "url(#arrowhead)");
+                const box = document.createElementNS(svgNS, "line");
+
+                box.setAttribute("fill", "green");
+                box.setAttribute("stroke-width", "1");
+                g.appendChild(line);
+                //g.appendChild(box);
+            });
+
+            // Create text labels for cardinal directions
+            const labels = [
+                { x: 100, y: 35, text: "N" },
+                { x: 100, y: 175, text: "S" },
+                { x: 25, y: 105, text: "W" },
+                { x: 175, y: 105, text: "E" }
+            ];
+            /*
+            labels.forEach(label => {
+                const text = document.createElementNS(svgNS, "text");
+                text.setAttribute("x", label.x);
+                text.setAttribute("y", label.y);
+                text.setAttribute("font-size", "10");
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("fill", "black");
+                text.textContent = label.text;
+                g.appendChild(text);
+            });
+            */
+            svg.appendChild(g);
+            return svg
+        }
+
+        function setWidgetState(target, newState)
+        {
+            const oldState = parseInt(target.dataset.state);
+            let state = newState | oldState;
+            console.log(state, newState, oldState);
+            const button = target.querySelector('.submit-button');
+            const resetButton = target.querySelector('.reset-button');
+            target.dataset.state = state;
+            if(state == WIDGET_STATE.bbox || state == WIDGET_STATE.direction)
+            {
+                button.style.display = 'none';
+                resetButton.style.display = 'inline-block';
+            }
+            else if(state == (WIDGET_STATE.bbox | WIDGET_STATE.direction))
+            {
+                console.log(`button state ${state}`)
+                button.textContent = 'Submit Cassini';
+                button.style.display = 'inline-block';
+                resetButton.style.display = 'inline-block';
+            }
+            else
+            {
+                button.textContent = 'Submit Not Cassini';
+                button.style.display = 'inline-block';
+                resetButton.style.display = 'none';
+            }
+        }
+
+        function resetImage(event)
+        {
+            const target = event.currentTarget.parentNode.parentNode;
+            console.log(target)
+            target.querySelectorAll('.bounding-box').forEach(e => e.remove());
+            target.querySelectorAll('.highlightable').forEach(e => e.setAttribute('stroke', 'rgba(0, 0, 0, 0.8)'));
+            const submitButton = target.querySelector('.submit-button')
+            submitButton.textContent = 'Submit Not Cassini';
+            submitButton.style.display = 'inline-block';
+            target.dataset.state = 0;
+            //setWidgetState(currentImage.parentNode, 0);
+        }
+
+        async function submitImage(event)
+        {
+            const target = event.currentTarget.parentNode.parentNode;
+            const timestamp = target.dataset.timestamp;
+            let data = null;
+            const image = target.querySelector('img');
+            boxWidthRatio = image.width/image.naturalWidth;
+            boxHeightRatio = image.height/image.naturalHeight;
+
+            data = [];
+            if(target.dataset.state == 0)
+            {
+                data = [[{
+                    timestamp: timestamp,
+                    x1: 0,
+                    y1: 0,
+                    x2: 0,
+                    y2: 0,
+                    direction: -1
+                }]];
+            }
+            else if(target.dataset.state == (WIDGET_STATE.bbox | WIDGET_STATE.direction))
+            {
+                const directionEle = target.querySelector('.highlightable[data-selected="true"]');
+                const direction = directionEle.dataset.dir;
+                const box = target.querySelector('.bounding-box');
+                data = [[{
+                    timestamp: timestamp,
+                    x1: parseFloat(box.style.left)/boxWidthRatio,
+                    y1: parseFloat(box.style.top)/boxHeightRatio,
+                    x2: (parseFloat(box.style.left) + parseFloat(box.style.width))/boxWidthRatio,
+                    y2: (parseFloat(box.style.top) + parseFloat(box.style.height))/boxHeightRatio,
+                    direction: direction
+                }]];
+            }
+            else
+            {
+                throw new Error(`Invalid State ${target.dataset.state}`);
+                
+            }
+            //deactivate all buttons
+            target.querySelectorAll('.submit-button').forEach(e => e.style.display = 'none');
+            target.querySelectorAll('.reset-button').forEach(e => e.style.display = 'none');
+            image.style.opacity = 0.5;
+            
+            
+            let response = await fetch("train/update", {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+
+
+            if(response.ok)
+            {
+                console.log('Success');
+                target.remove();
+            }
+            else
+            {
+                alert(`Failed to submit data: ${response.status} ${response.statusText}`);
+            }
+
+        }
+
+        async function main()
+        {
+            
+            let timestamp = new URLSearchParams(window.location.search).get('date');
+            if (timestamp == null) 
+            {
+                timestamp = Date.now();
+            }
+
+
+            const data = await collect(timestamp);
+
+            var dates = Object.values(data.timestamp);
+            for (let d in dates)
+            {
+                dates[d] = new Date(dates[d]);
+            }
+            console.log(data);
+            const navigator = document.getElementById('navigator');
+            if(dates.length === 0)
+            {
+                //attempt to parse
+                let date = new Date(timestamp);
+                const previous = new Date(date.getTime() - 86400000);
+                const next = new Date(date.getTime() + 86400000);
+                navigator.innerHTML = `<span>No Data Availabe</span><a href="?date=${previous.toISOString()}">Previous Day</a> | <a href="?date=${next.toISOString()}">Next Day</a>`;
+                return;
+            }
+            const prevDay = new Date(dates[0].getTime() - 86400000);
+            const nextDay = new Date(dates[0].getTime() + 86400000);
+            if(isToday(prevDay))
+            {
+                navigator.innerHTML = `<a href="?date=${prevDay.toISOString()}">Previous Day</a>`;
+            }
+            else
+            {
+                navigator.innerHTML = `<a href="?date=${prevDay.toISOString()}">Previous Day</a> | <a href="?date=${nextDay.toISOString()}">Next Day</a>`;
+            }
+
+
+            const container = document.getElementById('container');
+            let ii=0;
+            for(let [idx, url] of Object.entries(data.url))
+            {
+                let imgContainer = document.createElement('div');
+                imgContainer.className = 'image-container';
+
+                let img = document.createElement('img');
+                img.src = url;
+                img.id = 'image';
+                img.height = 324;
+                img.width = 432;
+
+                let x1 = 432*data.x1[idx]/300;
+                let y1 = 324*data.y1[idx]/300;
+                let x2 = 432*data.x2[idx]/300;
+                let y2 = 432*data.y2[idx]/300;
+
+                img.ondragstart = function() { return false; };
+
+                // Create the box element
+                let box = document.createElement('div');
+                box.className = 'box';
+                box.style.left = `${x1}px`;
+                box.style.top = `${y1}px`;
+                box.style.width = `${x2-x1}px`;
+                box.style.height = `${y2-y1}px`;
+                box.textContent = data.class_name[idx];
+                let widgetContainer = document.createElement('div');
+                widgetContainer.className = 'widget-container';
+                imgContainer.appendChild(img);
+                let compassContainer = document.createElement('div');
+                compassContainer.className = 'compass-container';
+                let compass = createCompassRose();
+                compass.setAttribute('class', 'compass');
+                let button = document.createElement('button');
+                button.className = 'submit-button';
+                button.textContent = 'Submit Not Cassini';
+                button.addEventListener('click', submitImage);
+
+                let resetButton = document.createElement('button');
+                resetButton.className = 'reset-button';
+                resetButton.textContent = 'Reset Image';
+                resetButton.addEventListener('click', resetImage);
+                widgetContainer.dataset.timestamp = data.timestamp[idx];
+
+                compassContainer.appendChild(compass);
+                widgetContainer.appendChild(imgContainer);
+                widgetContainer.appendChild(compassContainer);
+                compassContainer.appendChild(compass);
+                compassContainer.appendChild(button);
+                compassContainer.appendChild(resetButton);
+
+                widgetContainer.dataset.state = 0;
+                //imgContainer.appendChild(box);
+                container.appendChild(widgetContainer);
+                imgContainer.addEventListener('mousedown', mouseDown);
+                ii++;
+   
+            }
+        }
+
+        
+
+
+        document.addEventListener('DOMContentLoaded', main);
+    </script>
+</head>
+<body>
+
+    <div id="navigator"></div>
+    <div id="container"></div>
+
+
+
+</body>
+</html>
