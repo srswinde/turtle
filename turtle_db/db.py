@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from pandas.errors import OutOfBoundsDatetime
 import enum
 from pathlib import Path
-from pymysql.err import IntegrityError
+import os
 import pandas as pd
 import datetime
 import requests
@@ -173,6 +173,18 @@ class notifications(Base):
     end_notified = Column(Integer, default=0)
     
 
+class cassini_orientation(Base):
+    
+    __tablename__="cassini_orientation"
+    timestamp = Column(BigInteger, primary_key=True)
+    x1 = Column(Float)
+    y1 = Column(Float)
+    x2 = Column(Float)
+    y2 = Column(Float)
+    
+    orientation = Column(Integer)
+    
+
 def log_temp_sensors(ip):
     rq = requests.get(f"http://{ip}/temps")
     
@@ -282,9 +294,14 @@ def update_image(timestamp, hasTurtle):
     session.close()
 
 
-def mksession():
+def mksession(uri=None):
+    if uri is None:
+        uri = os.environ.get('TURTLE_DB_URI', None)
+        
+    if uri is None:
+        raise ValueError("No database URI provided.")
 
-    engine = create_engine("mysql+pymysql://scott:scott@localhost/turtle")
+    engine = create_engine(uri)
     session = sessionmaker(bind=engine)()
     return session
 

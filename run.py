@@ -5,9 +5,8 @@
 import asyncio
 import tornado.httpserver
 import tornado.ioloop
-import tornado.options
 import tornado.web
-import tornado.autoreload
+import os
 from tornado.options import options
 import tornado.web
 from settings import settings
@@ -28,57 +27,14 @@ from turtle_db import db
 
 
 
-class INDIMainPage(INDIHandler):
-
-    def get(self):
-        self.indi_render(Path.cwd()/"turtle_db/templates/picam2.html", devices=['*'], title="TITLE", example_variable="EXAMPLE")
-
-def handle_blob(blob):
-    dtnow = datetime.datetime.now()
-    now=int(time.time())
-    imname = f'{now}.jpg'
-    remote_nowpic = Path('/mnt/nfs/imgs')
-    remote_nowpic/= dtnow.strftime("%Y")
-    remote_nowpic/= dtnow.strftime("%b")
-    remote_nowpic/= dtnow.strftime("%d")
-    remote_nowpic.mkdir(parents=True, exist_ok=True)
-    remote_nowpic/=imname
-    remote_nowpic = str(remote_nowpic)
-    nowpic = Path('/mnt/nfs/imgs/latest/latest.jpg')
-
-
-    with open(remote_nowpic, 'wb') as archive:
-        archive.write(blob['data'])
-
-    with open(nowpic, 'wb') as latest:
-        latest.write(blob['data'])
-
-    row = db.images(path=str(remote_nowpic), timestamp=now, hasTurtle=db.HAS_TURTLE.NULL)
-    session = db.mksession()
-    session.add(row)
-    print(f"Adding row f{dtnow}")
-    session.commit()
-    
-    rconn = redis.Redis(host="localhost")
-    data = {
-            "time": dtnow.ctime(),
-            "name": remote_nowpic,
-            "timestamp": dtnow.timestamp()
-            }
-    rconn.publish("home_image", json.dumps(data))
-    rconn.set("home_image", json.dumps(data))
 
 
 
 class TornadoApplication(tornado.web.Application):
 
     def __init__(self):
-        iwa = INDIWebApp(indihost="192.168.0.205", indiport=7624, handle_blob=handle_blob)
-        ihandlers = iwa.indi_handlers()
-        url_patterns.extend(ihandlers)
-        url_patterns.append((r"/indi/imain", INDIMainPage))
-        print(url_patterns)
         
+        os.environ["TURTLE_DB_URI"] = settings["TURTLE_DB_URI"]
         tornado.web.Application.__init__(self, url_patterns, **settings)
 
 
@@ -147,64 +103,7 @@ async def get_underground_temp():
         
 
 
-async def grabTanspot():
-    while 1:
-        try:
-            dtnow = datetime.datetime.now()
-            now=int(time.time())
-            remote_nowpic = Path('/mnt/turtle/imgs/tanspot')
-            remote_nowpic/= dtnow.strftime("%Y")
-            remote_nowpic/= dtnow.strftime("%b")
-            remote_nowpic/= dtnow.strftime("%d")
-            remote_nowpic.mkdir(parents=True, exist_ok=True)
-            remote_nowpic/=f'{now}.jpg'
-            remote_nowpic = str(remote_nowpic)
-            nowpic = Path('/mnt/turtle/imgs/tanspot/latest.jpg')
-        except Exception as error:
-            print(error)
 
-        try:
-            # trying both possible IP addresses
-            # laziest programming ever. 
-#            async with aiohttp.ClientSession() as session:
-#                url = f"http://192.168.0.166/capture?_cb={time.time()}"
-#                async with session.get(url) as resp:
-#                    image = await resp.read()
-#                    
-#                    with open(remote_nowpic, 'wb') as jpg:
-#                        jpg.write(image)
-#
-#                    with open(nowpic, 'wb') as latest:
-#                        latest.write(image)
-
-            async with aiohttp.ClientSession() as session:
-                url = f"http://192.168.0.166/capture?_cb={time.time()}"
-                async with session.get(url) as resp:
-                    image = await resp.read()
-                    
-                    with open(remote_nowpic, 'wb') as jpg:
-                        jpg.write(image)
-
-                    with open(nowpic, 'wb') as latest:
-                        latest.write(image)
-
-        except Exception as error:
-            print(f"Error with tanspot image: {error}")
-           
-        try:
-            rconn = redis.Redis( host="cabinet.local")
-            data = {
-                    "time": dtnow.ctime(),
-                    "name": remote_nowpic,
-                    "timestamp": dtnow.timestamp()
-                    }
-
-            rconn.publish("tanspot_image", json.dumps(data))
-            rconn.set("tanspot_image", json.dumps(data))
-
-            await asyncio.sleep(20.0)
-        except Exception as error:
-            print(f"redis error {error}")
 
 
 def main():
@@ -216,7 +115,6 @@ def main():
     loop = tornado.ioloop.IOLoop.current()
     loop.asyncio_loop.create_task(start_redis())
     loop.asyncio_loop.create_task(get_underground_temp())
-#    loop.asyncio_loop.create_task(grabTanspot())
     loop.start()
 
 
