@@ -33,7 +33,7 @@
     </style>
 </head>
 <body>
-
+    <div id="navigator"></div>
     <div id="plot"></div>
     <div id="hider"></div>
     <a id="show_url"></a>
@@ -46,13 +46,8 @@
 
 WAIT_TIME = 0;
 
-async function Collect() {
+async function Collect(timestamp) {
     //get uri defined timestamp
-    let timestamp = new URLSearchParams(window.location.search).get('timestamp');
-    console.log(timestamp);
-    if (timestamp == null) {
-        timestamp = Date.now();
-    }
 
 
     let response = await fetch('', 
@@ -89,24 +84,47 @@ function colorForPosition(el, az)
         }
     }
 
-    
 }
 
-
+function isToday(date) {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+}
 async function main() 
 {
 
 
-    let images = await Collect('');
+    let timestamp = new URLSearchParams(window.location.search).get('timestamp');
+    if (timestamp == null) {
+        timestamp = Date.now();
+    }
+
+    const navigator = document.getElementById('navigator');
+    //if timestamp is for today:
+   
+
+    let images = await Collect(timestamp);
     var dates = Object.keys(images['prob']);
     var prob = Object.values(images['prob']);
     var files = Object.values(images['path']);
 
-
-
     for(d in dates) {
         dates[d] = new Date(parseInt(dates[d]));
     }
+    const prevDay = new Date(dates[0].getTime() - 86400000);
+    const nextDay = new Date(dates[0].getTime() + 86400000);
+    if(isToday(dates[0]))
+    {
+        navigator.innerHTML = `<a href="?timestamp=${prevDay.toISOString()}">Previous Day</a>`;   
+    }
+    else
+    {
+        navigator.innerHTML = `<a href="?timestamp=${prevDay.toISOString()}">Previous Day</a> | <a href="?timestamp=${nextDay.toISOString()}">Next Day</a>`;
+    }
+    
+
     console.log(dates[0])
     // Create the trace
     var trace = {

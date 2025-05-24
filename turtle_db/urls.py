@@ -5,24 +5,27 @@ from tornado.web import StaticFileHandler
 from .handlers import shed
 from .handlers import hole
 from .handlers import temperatures
+from .handlers import db_passthrough
+from .handlers import old_base
 
 
 url_patterns = [
     (r'/cassini/', base.IndexHandler),
-    (r'/cassini/history.html', base.HistoryHandler),
-    (r'/cassini/gifs.html', base.GifHandler),
     (r'/cassini/websocket', base.Websocket),
     (r'/cassini/images', base.ImageSocket),
-    (r'/cassini/db/temp/(.*)', base.DataTemperatures),
-    (r'/cassini/db/images/(.*)', base.DataImages),
-    (r'/cassini/playground', base.ImagesPlayground),
-    (r'/cassini/lights.html', base.Lights),
     (r'/cassini/image_files/(.*)', base.ImageHandler, {'path': '/'}),
-    (r'/cassini/detect', base.DetectHandler),
-    (r'/cassini/recent_detect', base.RecentDetectHandler),
-    (r'/cassini/detect_intervals', base.CassiniIntervals),
-    (r'/cassini/edge_cases', base.EdgeCaseHandler),
-    (r'/cassini/playground/', base.ImagesPlayground),
+    
+    # Old base
+    (r'/cassini/history.html', old_base.HistoryHandler),
+    (r'/cassini/gifs.html', old_base.GifHandler),
+    (r'/cassini/db/temp/(.*)', old_base.DataTemperatures),
+    (r'/cassini/db/images/(.*)', old_base.DataImages),
+    (r'/cassini/recent_detect', old_base.RecentDetectHandler),
+    (r'/cassini/detect_intervals', old_base.CassiniIntervals),
+    (r'/cassini/lights.html', old_base.Lights),
+    (r'/cassini/detect', old_base.DetectHandler),
+    (r'/cassini/edge_cases', old_base.EdgeCaseHandler),
+
     # Static file handlers
     (r'/cassini/hole-cam/static/(.*)', StaticFileHandler, {'path': '/mnt/nfs/hole-cam/'}),
     #(r'/cassini/staticturtle/(.*)', StaticFileHandler, {'path': '/mnt/nfs/'}),
@@ -37,13 +40,17 @@ url_patterns = [
     (r'/cassini/hole-cam/UpdateDb', hole.UpdateHoleDbHandler),
     (r'/cassini/detections.html', hole.HoleAnalysisHandler),
     (r'/cassini/hole-cam/resnet', hole.HoleResnetHandler),
+    (r'/cassini/hole-cam/resnet/train', hole.HoleResnetTrainHandler),
+    (r'/cassini/hole-cam/resnet/train/update', hole.HoleResnetTrainUpdateHandler),
     
     
     #temp handlers
     (r'/cassini/temperatures.html', temperatures.TempAnalysisHandler),
     
     (r'/cassini/login', base.LoginHandler),
-    (r'/cassini/index-new.html', base.IndexHandler)
+    (r'/cassini/index-new.html', base.IndexHandler),
     
+    #db passthrough
+    (r'/cassini/db/(.*)/(.*)', db_passthrough.GetTableHandler),
     
 ]

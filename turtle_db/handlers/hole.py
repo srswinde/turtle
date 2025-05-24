@@ -2,7 +2,7 @@ from tornado.web import RequestHandler
 from tornado.web import StaticFileHandler
 from pathlib import Path
 from ..db import get_dataframe, shed_camera, mksession, HAS_TURTLE
-from ..db import hole_camera, images, hole_camera_resnet_detection
+from ..db import hole_camera, images, hole_camera_resnet_detection, cassini_orientation
 import pandas as pd
 import json
 from tornado.escape import json_encode
@@ -240,7 +240,6 @@ class HoleResnetHandler(RequestHandler):
         if date is None:
             date = datetime.datetime.now()
         
-        print(date)
         midnight = datetime.datetime(date.year, date.month, date.day)
         next_midnight = midnight + datetime.timedelta(days=1)
         
@@ -259,3 +258,84 @@ class HoleResnetHandler(RequestHandler):
         
         
         self.write(d)
+        
+class HoleResnetTrainHandler(RequestHandler):
+    
+    def get(self):
+        
+        self.render('hole_resnet_train.html')
+        
+    def post(self):
+        try:
+            data = json.loads(self.request.body.decode('utf-8'))
+        except json.JSONDecodeError:
+            data = {}
+            data['date'] = datetime.datetime.now().isoformat()
+            
+        if 'date' in data:
+            try:
+                timestamp = parse(data['date'])
+            except TypeError:
+                timestamp = datetime.datetime.now()
+                logging.error(f"Invalid timestamp {data['date']}")
+            
+            
+        else:
+            timestamp = datetime.datetime.now()
+        
+        
+        midnight = datetime.datetime(timestamp.year, timestamp.month, timestamp.day)
+        next_midnight = midnight + datetime.timedelta(days=1)
+        
+        
+        
+        session = mksession()
+        
+        subquery = session.query(cassini_orientation.timestamp).subquery()
+        
+        query = session.query(hole_camera_resnet_detection)\
+            .filter(hole_camera_resnet_detection.timestamp > midnight.timestamp()*1000)\
+            .filter(hole_camera_resnet_detection.timestamp < next_midnight.timestamp()*1000)\
+            .filter(~hole_camera_resnet_detection.timestamp.in_(subquery))
+            
+        df = pd.read_sql(query.statement, query.session.bind)
+        df['url'] = df.path.str.replace('/mnt/nfs/hole-cam/', '/cassini/hole-cam/static/')
+        del df['path']
+        df_dict = df.to_dict()
+        df_dict['dates'] = [midnight.isoformat(), next_midnight.isoformat()]
+        
+        self.write(df_dict)
+        
+class HoleResnetTrainUpdateHandler(RequestHandler):
+    
+    def post(self):
+        
+        
+        
+        try:
+            data = json.loads(self.request.body.decode('utf-8'))
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid JSON {self.request.body}")
+        
+        new_rows = []
+        for datum in data:
+            row = cassini_orientation()
+            print("datum")
+            print(datum)
+            print("datum")
+            for values in datum:
+                print(values)
+                row.timestamp = int(values['timestamp'])
+                row.x1 = values['x1']
+                row.y1 = values['y1']
+                row.x2 = values['x2']
+                row.y2 = values['y2']
+                row.orientation = values['direction']
+            
+            new_rows.append(row)
+            
+        session = mksession()
+        session.add_all(new_rows)
+        session.commit()
+        
+        self.write('success')
