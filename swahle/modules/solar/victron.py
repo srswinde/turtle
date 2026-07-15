@@ -18,22 +18,76 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 VICTRON_VENDOR_ID = 0x02E1
 PRODUCT_ADVERTISEMENT = 0x10
 
-# Victron charger device_state codes (partial — the common ones).
+# Victron charger device_state codes (VE.Direct "OperationMode" — the common ones).
 DEVICE_STATES = {
     0: "off",
+    1: "low power",
     2: "fault",
     3: "bulk",
     4: "absorption",
     5: "float",
     6: "storage",
     7: "equalize",
-    245: "wake-up",
+    9: "inverting",
+    11: "power supply",
+    245: "starting up",
+    246: "repeated absorption",
+    247: "recondition",
+    248: "battery safe",
+    249: "active",
     252: "external control",
 }
+
+# Victron battery-monitor aux input mode (BatteryMonitor plaintext, bits 66-67).
+AUX_MODES = {0: "starter voltage", 1: "midpoint voltage", 2: "temperature", 3: "disabled"}
 
 
 class VictronDecodeError(ValueError):
     pass
+
+
+class BitReader:
+    """LSB-first bit reader for Victron's bit-packed battery-monitor record.
+
+    Field layout (and this reader) matches the community-verified
+    keshavdv/victron-ble project (devices/base.py + devices/battery_monitor.py),
+    cross-checked here against a live SmartShunt capture: the decoded voltage
+    tracked the independently-known battery-bank voltage from the SmartSolar
+    MPPT on the same bank, and stayed stable/plausible across many packets.
+    """
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._index = 0
+
+    def read_bit(self) -> int:
+        bit = (self._data[self._index >> 3] >> (self._index & 7)) & 1
+        self._index += 1
+        return bit
+
+    def read_unsigned_int(self, num_bits: int) -> int:
+        value = 0
+        for position in range(num_bits):
+            value |= self.read_bit() << position
+        return value
+
+    def read_signed_int(self, num_bits: int) -> int:
+        value = self.read_unsigned_int(num_bits)
+        return value - (1 << num_bits) if value & (1 << (num_bits - 1)) else value
+
+
+@dataclass
+class BatteryMonitorReading:
+    model_id: int
+    nonce: int
+    remaining_mins: int | None
+    voltage: float | None
+    alarm: int
+    aux_mode: int
+    aux_mode_name: str
+    current: float | None
+    consumed_ah: float | None
+    soc: float | None
 
 
 @dataclass
@@ -106,4 +160,32 @@ def parse_solar_charger(plaintext: bytes, *, model_id: int, nonce: int) -> Solar
         yield_today=yield_today,
         pv_power=pv_power,
         load_current=load_current,
+    )
+
+
+def parse_battery_monitor(plaintext: bytes, *, model_id: int, nonce: int) -> BatteryMonitorReading:
+    if len(plaintext) < 15:
+        raise VictronDecodeError(f"decrypted payload too short ({len(plaintext)} bytes)")
+
+    reader = BitReader(plaintext)
+    remaining_mins = reader.read_unsigned_int(16)
+    voltage = reader.read_signed_int(16)
+    alarm = reader.read_unsigned_int(16)
+    aux = reader.read_unsigned_int(16)
+    aux_mode = reader.read_unsigned_int(2)
+    current = reader.read_signed_int(22)
+    consumed_ah = reader.read_unsigned_int(20)
+    soc = reader.read_unsigned_int(10)
+
+    return BatteryMonitorReading(
+        model_id=model_id,
+        nonce=nonce,
+        remaining_mins=remaining_mins if remaining_mins != 0xFFFF else None,
+        voltage=voltage / 100.0 if voltage != 0x7FFF else None,
+        alarm=alarm,
+        aux_mode=aux_mode,
+        aux_mode_name=AUX_MODES.get(aux_mode, f"unknown({aux_mode})"),
+        current=current / 1000.0 if current != 0x3FFFFF else None,
+        consumed_ah=-consumed_ah / 10.0 if consumed_ah != 0xFFFFF else None,
+        soc=soc / 10.0 if soc != 0x3FF else None,
     )

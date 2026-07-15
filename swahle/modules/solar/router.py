@@ -14,8 +14,20 @@ from app.deps import require_user
 from app.settings import settings
 from app.templating import templates
 
-from .models import latest_reading, readings_since, save_reading
-from .victron import VictronDecodeError, decrypt_manufacturer_data, parse_solar_charger
+from .models import (
+    latest_reading,
+    latest_shunt_reading,
+    readings_since,
+    save_reading,
+    save_shunt_reading,
+    shunt_readings_since,
+)
+from .victron import (
+    VictronDecodeError,
+    decrypt_manufacturer_data,
+    parse_battery_monitor,
+    parse_solar_charger,
+)
 
 log = logging.getLogger("swahle.solar")
 
@@ -68,19 +80,27 @@ async def solar_hook(request: Request, token: str = ""):
     if mfg is None:
         return JSONResponse({"error": "no manufacturer data in advertisement"}, status_code=400)
 
-    key = bytes.fromhex(settings.solar_devices[device_id]["aes_key"])
+    device_cfg = settings.solar_devices[device_id]
+    kind = device_cfg.get("kind", "solar_charger")
+    key = bytes.fromhex(device_cfg["aes_key"])
     try:
         plaintext = decrypt_manufacturer_data(mfg, key)
         model_id = mfg[3] | (mfg[4] << 8)
         nonce = mfg[7] | (mfg[8] << 8)
-        reading = parse_solar_charger(plaintext, model_id=model_id, nonce=nonce)
+        if kind == "battery_monitor":
+            reading = parse_battery_monitor(plaintext, model_id=model_id, nonce=nonce)
+        else:
+            reading = parse_solar_charger(plaintext, model_id=model_id, nonce=nonce)
     except VictronDecodeError as exc:
         log.warning("solar decode failed for %s: %s", device_id, exc)
         return JSONResponse({"error": str(exc)}, status_code=422)
 
     entry = dataclasses.asdict(reading)
     entry["rssi"] = payload.get("rssi")
-    stored = await run_in_threadpool(save_reading, device_id, entry)
+    if kind == "battery_monitor":
+        stored = await run_in_threadpool(save_shunt_reading, device_id, entry)
+    else:
+        stored = await run_in_threadpool(save_reading, device_id, entry)
     return JSONResponse({"ok": True, "reading": stored})
 
 
@@ -103,4 +123,19 @@ async def solar_latest(device: str = "mppt"):
 async def solar_history(device: str = "mppt", hours: float = Query(default=24.0, gt=0, le=24 * 30)):
     since_ms = int((time.time() - hours * 3600) * 1000)
     rows = await run_in_threadpool(readings_since, device, since_ms)
+    return JSONResponse({"device": device, "hours": hours, "readings": rows})
+
+
+@router.get("/api/solar/shunt/latest")
+async def shunt_latest(device: str = "shunt"):
+    reading = await run_in_threadpool(latest_shunt_reading, device)
+    if reading is None:
+        return JSONResponse({"error": f"no readings for {device}"}, status_code=404)
+    return JSONResponse(reading)
+
+
+@router.get("/api/solar/shunt/history")
+async def shunt_history(device: str = "shunt", hours: float = Query(default=24.0, gt=0, le=24 * 30)):
+    since_ms = int((time.time() - hours * 3600) * 1000)
+    rows = await run_in_threadpool(shunt_readings_since, device, since_ms)
     return JSONResponse({"device": device, "hours": hours, "readings": rows})

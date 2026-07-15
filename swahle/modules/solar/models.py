@@ -37,6 +37,24 @@ class solar_reading(SolarBase):
     rssi = Column(Integer, nullable=True)
 
 
+class shunt_reading(SolarBase):
+    __tablename__ = "shunt_reading"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device = Column(String(32), index=True)
+    ts = Column(BigInteger, index=True)   # unix ms — see solar_reading.ts note above
+    model_id = Column(Integer)
+    nonce = Column(Integer)
+    remaining_mins = Column(Integer, nullable=True)
+    voltage = Column(Float, nullable=True)
+    alarm = Column(Integer)
+    aux_mode = Column(Integer)
+    aux_mode_name = Column(String(32))
+    current = Column(Float, nullable=True)
+    consumed_ah = Column(Float, nullable=True)
+    soc = Column(Float, nullable=True)
+    rssi = Column(Integer, nullable=True)
+
+
 def ensure_tables() -> None:
     SolarBase.metadata.create_all(engine, checkfirst=True)
 
@@ -96,5 +114,64 @@ def readings_since(device: str, since_ts_ms: int) -> list[dict]:
             .all()
         )
         return [_row_to_dict(r) for r in rows]
+    finally:
+        session.close()
+
+
+def _shunt_row_to_dict(row: shunt_reading) -> dict:
+    return {
+        "device": row.device,
+        "ts": row.ts,
+        "model_id": row.model_id,
+        "nonce": row.nonce,
+        "remaining_mins": row.remaining_mins,
+        "voltage": row.voltage,
+        "alarm": row.alarm,
+        "aux_mode": row.aux_mode,
+        "aux_mode_name": row.aux_mode_name,
+        "current": row.current,
+        "power": round(row.voltage * row.current, 2) if row.voltage is not None and row.current is not None else None,
+        "consumed_ah": row.consumed_ah,
+        "soc": row.soc,
+        "rssi": row.rssi,
+    }
+
+
+def save_shunt_reading(device: str, reading: dict) -> dict:
+    session = SessionLocal()
+    try:
+        row = shunt_reading(device=device, ts=int(time.time() * 1000), **reading)
+        session.add(row)
+        session.commit()
+        return _shunt_row_to_dict(row)
+    finally:
+        session.close()
+
+
+def latest_shunt_reading(device: str) -> dict | None:
+    session = SessionLocal()
+    try:
+        row = (
+            session.query(shunt_reading)
+            .filter(shunt_reading.device == device)
+            .order_by(shunt_reading.ts.desc())
+            .first()
+        )
+        return _shunt_row_to_dict(row) if row else None
+    finally:
+        session.close()
+
+
+def shunt_readings_since(device: str, since_ts_ms: int) -> list[dict]:
+    session = SessionLocal()
+    try:
+        rows = (
+            session.query(shunt_reading)
+            .filter(shunt_reading.device == device)
+            .filter(shunt_reading.ts >= since_ts_ms)
+            .order_by(shunt_reading.ts.asc())
+            .all()
+        )
+        return [_shunt_row_to_dict(r) for r in rows]
     finally:
         session.close()
