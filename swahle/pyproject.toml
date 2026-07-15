@@ -1,0 +1,34 @@
+[project]
+name = "swahle"
+version = "0.1.0"
+description = "Swahle Smart Home — consolidated FastAPI app (public + private zones)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic-settings>=2.2",
+    "sqlalchemy>=2.0",
+    "pymysql>=1.1",
+    "pandas>=2.0",
+    "jinja2>=3.1",
+    "redis>=5.0",
+    "pyjwt[crypto]>=2.7",
+    "cryptography>=42",
+    "httpx>=0.27",
+    "python-dateutil>=2.8",
+    "websockets>=12",
+    "amcrest>=1.9",       # camera live-snapshot route (web) + ingest worker
+    "pillow>=10",         # image compression in the capture layer
+    "requests>=2.31",     # shed light + IFTTT notify
+]
+
+[project.optional-dependencies]
+# The ingest worker (modules.cameras.worker) additionally needs the ML stack.
+# cassini_detect is the sibling repo (install editable: pip install -e ../cassini_detect).
+worker = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+]
+
+[tool.uvicorn]
+# Run from the swahle/ directory:  uvicorn app.main:app --reload
