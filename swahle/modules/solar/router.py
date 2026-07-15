@@ -4,14 +4,17 @@ from __future__ import annotations
 import base64
 import dataclasses
 import logging
+import time
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.deps import require_user
 from app.settings import settings
+from app.templating import templates
 
-from .services import solar_store
+from .models import latest_reading, readings_since, save_reading
 from .victron import VictronDecodeError, decrypt_manufacturer_data, parse_solar_charger
 
 log = logging.getLogger("swahle.solar")
@@ -77,10 +80,27 @@ async def solar_hook(request: Request, token: str = ""):
 
     entry = dataclasses.asdict(reading)
     entry["rssi"] = payload.get("rssi")
-    stored = solar_store.record(device_id, entry)
+    stored = await run_in_threadpool(save_reading, device_id, entry)
     return JSONResponse({"ok": True, "reading": stored})
 
 
-@router.get("/api/solar")
-async def solar_latest():
-    return JSONResponse(solar_store.latest_all())
+@router.get("/solar", response_class=HTMLResponse)
+async def solar_page(request: Request):
+    return templates.TemplateResponse(request, "solar.html", {
+        "devices": settings.solar_devices,
+    })
+
+
+@router.get("/api/solar/latest")
+async def solar_latest(device: str = "mppt"):
+    reading = await run_in_threadpool(latest_reading, device)
+    if reading is None:
+        return JSONResponse({"error": f"no readings for {device}"}, status_code=404)
+    return JSONResponse(reading)
+
+
+@router.get("/api/solar/history")
+async def solar_history(device: str = "mppt", hours: float = Query(default=24.0, gt=0, le=24 * 30)):
+    since_ms = int((time.time() - hours * 3600) * 1000)
+    rows = await run_in_threadpool(readings_since, device, since_ms)
+    return JSONResponse({"device": device, "hours": hours, "readings": rows})

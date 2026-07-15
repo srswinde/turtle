@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar · Swahle</title>
+  <style>
+    :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec;
+      --accent:#2f7d4f; --bad:#e0533d; --warn:#e0a53d;
+      --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06);
+      /* dataviz categorical slots 1 (blue, "input") and 2 (aqua, "output") — same
+         validated pair as naturalist-owlv2.html: node scripts/validate_palette.js,
+         light surface #ffffff / dark surface #171d25 (this page's card color). */
+      --series-pv:#2a78d6; --series-batt:#1baf7a; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4;
+      --card:#171d25; --border:#262e39; --accent:#3fae6b; --bad:#e0664f; --warn:#e0a53d;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+      --series-pv:#3987e5; --series-batt:#199e70; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+      padding:.85rem 1.25rem; background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; font-size:1.1rem; color:var(--fg); }
+    .site a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border); background:var(--card);
+      padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .wrap { max-width:920px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+    h1 { font-size:1.5rem; margin:0 0 .35rem; }
+    .lede { color:var(--muted); font-size:.95rem; line-height:1.55; max-width:68ch; margin:0 0 1.5rem; }
+    h2 { font-size:1.1rem; margin:2.2rem 0 .4rem; }
+    p.sub { color:var(--muted); font-size:.85rem; margin:0 0 1rem; max-width:70ch; line-height:1.5; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      padding:1.2rem 1.3rem; margin-bottom:1rem; position:relative; }
+
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(9.5rem,1fr)); gap:.8rem; margin-bottom:1rem; }
+    .stat { background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow);
+      padding:.85rem 1rem; }
+    .stat .k { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+    .stat .v { font-size:1.5rem; font-weight:700; margin-top:.2rem; font-variant-numeric:tabular-nums; }
+    .stat .v.pv { color:var(--series-pv); }
+    .stat .v.batt { color:var(--series-batt); }
+    .stat .d { font-size:.78rem; color:var(--muted); margin-top:.15rem; }
+
+    .badge { display:inline-flex; align-items:center; gap:.35rem; font-size:.78rem; font-weight:700;
+      padding:.28rem .65rem; border-radius:999px; }
+    .badge.good { color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent); }
+    .badge.warn { color:var(--warn); background:color-mix(in srgb, var(--warn) 18%, transparent); }
+    .badge.bad { color:var(--bad); background:color-mix(in srgb, var(--bad) 16%, transparent); }
+    .badge.neutral { color:var(--muted); background:color-mix(in srgb, var(--muted) 14%, transparent); }
+
+    .range-row { display:flex; gap:.5rem; align-items:center; margin-bottom:.9rem; }
+    .range-btn { border:1px solid var(--border); background:var(--card); color:var(--fg); font-size:.82rem;
+      font-weight:600; padding:.4rem .85rem; border-radius:999px; cursor:pointer; }
+    .range-btn.active { color:#fff; background:var(--series-pv); border-color:var(--series-pv); }
+
+    .legend { display:flex; gap:1.1rem; align-items:center; font-size:.82rem; color:var(--muted); margin-bottom:.6rem; }
+    .legend .sw { display:inline-flex; align-items:center; gap:.4rem; }
+    .legend .ln { width:14px; height:2px; border-radius:2px; }
+    svg.chart { width:100%; height:auto; overflow:visible; display:block; }
+    .tick-line { stroke:var(--border); stroke-width:1; }
+    .axis-label { font-size:10.5px; fill:var(--muted); }
+    .end-label { font-size:11px; font-weight:700; }
+    .crosshair-line { stroke:var(--muted); stroke-width:1; opacity:0; pointer-events:none; }
+    .hit-rect { fill:transparent; cursor:crosshair; }
+
+    .tooltip { position:absolute; pointer-events:none; background:var(--card); border:1px solid var(--border);
+      border-radius:10px; box-shadow:var(--shadow); padding:.55rem .7rem; font-size:.8rem; opacity:0;
+      transition:opacity .08s; white-space:nowrap; z-index:3; }
+    .tooltip .tt-time { color:var(--muted); font-size:.72rem; margin-bottom:.3rem; }
+    .tooltip .tt-row { display:flex; align-items:center; gap:.4rem; }
+    .tooltip .tt-row + .tt-row { margin-top:.2rem; }
+    .tooltip .tt-key { width:10px; height:2px; border-radius:2px; }
+    .tooltip .tt-val { font-weight:700; font-variant-numeric:tabular-nums; }
+    .tooltip .tt-name { color:var(--muted); }
+
+    .table-toggle { font-size:.78rem; color:var(--muted); background:none; border:none; text-decoration:underline;
+      cursor:pointer; padding:0; margin-top:.4rem; }
+    table.readings { width:100%; border-collapse:collapse; font-size:.8rem; margin-top:.7rem; }
+    table.readings th, table.readings td { text-align:right; padding:.35rem .5rem; border-bottom:1px solid var(--border);
+      font-variant-numeric:tabular-nums; }
+    table.readings th:first-child, table.readings td:first-child { text-align:left; }
+    table.readings th { color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; }
+
+    .note { color:var(--muted); font-size:.78rem; margin-top:.6rem; line-height:1.5; }
+    .empty { color:var(--muted); padding:2.5rem 0; text-align:center; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/app">🐢 Swahle</a>
+    <a class="back" href="/app">← Home</a>
+  </header>
+  <main class="wrap">
+    <h1>☀️ Solar</h1>
+    <p class="lede">
+      {{ devices.get('mppt', {}).get('name', 'SmartSolar MPPT') }} telemetry, decrypted from the
+      controller's encrypted Bluetooth broadcast by the Shelly BLU gateway relay.
+    </p>
+
+    <div id="body"><p class="empty">Loading telemetry…</p></div>
+  </main>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const fmtW = (w) => w == null ? '—' : Math.round(w).toLocaleString() + ' W';
+    const fmtV = (v) => v == null ? '—' : v.toFixed(2) + ' V';
+    const fmtA = (a) => a == null ? '—' : a.toFixed(1) + ' A';
+    const fmtKWh = (k) => k == null ? '—' : k.toFixed(2) + ' kWh';
+    // ts is unix milliseconds throughout (matches the DB column).
+    const fmtTime = (ts) => new Date(ts).toLocaleString([], {hour:'2-digit', minute:'2-digit', month:'short', day:'numeric'});
+    const fmtAgo = (ts) => {
+      const s = (Date.now() - ts) / 1000;
+      if (s < 90) return Math.round(s) + 's ago';
+      if (s < 5400) return Math.round(s/60) + 'm ago';
+      return (s/3600).toFixed(1) + 'h ago';
+    };
+
+    function stat(k, v, d, cls) {
+      return `<div class="stat"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div>` +
+        (d ? `<div class="d">${d}</div>` : '') + `</div>`;
+    }
+
+    function stateBadge(latest) {
+      if (latest.charger_error) return `<span class="badge bad">⚠ fault (code ${latest.charger_error})</span>`;
+      const s = latest.device_state_name;
+      if (s === 'bulk' || s === 'absorption' || s === 'equalize') return `<span class="badge good">⚡ ${s}</span>`;
+      if (s === 'float' || s === 'storage') return `<span class="badge warn">☀ ${s}</span>`;
+      if (s === 'off') return `<span class="badge neutral">off</span>`;
+      return `<span class="badge neutral">${s}</span>`;
+    }
+
+    function headroomBadge(latest) {
+      // Informational only — not a trigger. When the charger has backed off
+      // (float/storage) but the panels could still deliver meaningfully more
+      // than what's going into the battery, that gap is unused capacity.
+      const isTopped = latest.device_state_name === 'float' || latest.device_state_name === 'storage';
+      const headroom = latest.pv_power - latest.battery_power;
+      if (isTopped && headroom > 20) {
+        return `<span class="badge warn">☀ ~${Math.round(headroom)} W of panel headroom unused</span>`;
+      }
+      return '';
+    }
+
+    // Minimal SVG time-series line chart with crosshair + tooltip.
+    // series: [{name, color, key}], rows: [{ts, ...}] shared x-axis.
+    function lineChart(rows, series, opts) {
+      const w = 720, h = 260, padL = 46, padB = 26, padT = 14, padR = 12;
+      const tExtent = [rows[0].ts, rows[rows.length - 1].ts];
+      const tSpan = Math.max(1, tExtent[1] - tExtent[0]);
+      const rawMax = Math.max(1, ...rows.flatMap(r => series.map(s => r[s.key] || 0)));
+      const vMax = Math.ceil(rawMax / 100) * 100 || 100;
+      const xScale = (t) => padL + (w - padL - padR) * (t - tExtent[0]) / tSpan;
+      const yScale = (v) => padT + (h - padT - padB) * (1 - v / vMax);
+
+      let svg = `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${opts.ariaLabel || ''}">`;
+
+      // gridlines + y-axis ticks (clean numbers)
+      for (let i = 0; i <= 4; i++) {
+        const v = vMax * i / 4;
+        const y = yScale(v);
+        svg += `<line class="tick-line" x1="${padL}" x2="${w - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`;
+        svg += `<text class="axis-label" x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${Math.round(v).toLocaleString()}</text>`;
+      }
+      // x-axis time ticks (5 evenly spaced)
+      for (let i = 0; i <= 4; i++) {
+        const t = tExtent[0] + tSpan * i / 4;
+        const x = xScale(t);
+        const label = new Date(t).toLocaleString([], opts.tickFmt);
+        svg += `<text class="axis-label" x="${x.toFixed(1)}" y="${h - padB + 15}" text-anchor="${i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}">${label}</text>`;
+      }
+
+      series.forEach(s => {
+        const pts = rows.map(r => [xScale(r.ts), yScale(r[s.key] || 0)]);
+        const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+        const area = line + ` L${pts[pts.length - 1][0].toFixed(1)},${(h - padB).toFixed(1)}` +
+                     ` L${pts[0][0].toFixed(1)},${(h - padB).toFixed(1)} Z`;
+        svg += `<path d="${area}" fill="${s.color}" opacity="0.1"/>`;
+        svg += `<path d="${line}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+        const last = pts[pts.length - 1];
+        svg += `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="5" fill="${s.color}" stroke="var(--card)" stroke-width="2"/>`;
+        const lastVal = rows[rows.length - 1][s.key];
+        svg += `<text class="end-label" x="${(last[0] + 6).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" fill="var(--fg)">${Math.round(lastVal || 0)}W</text>`;
+      });
+
+      svg += `<line class="crosshair-line" id="crosshair" x1="0" x2="0" y1="${padT}" y2="${h - padB}"/>`;
+      svg += `<rect class="hit-rect" id="hitrect" x="${padL}" y="${padT}" width="${w - padL - padR}" height="${h - padT - padB}"/>`;
+      svg += `</svg>`;
+      return { svg, xScale, tExtent, tSpan, padL, padR, w };
+    }
+
+    function wireHover(container, chartMeta, rows, series) {
+      const svgEl = container.querySelector('svg.chart');
+      const hit = container.querySelector('#hitrect');
+      const crosshair = container.querySelector('#crosshair');
+      const tooltip = $('tooltip');
+      if (!hit) return;
+
+      function nearest(clientX) {
+        const rect = svgEl.getBoundingClientRect();
+        const px = (clientX - rect.left) / rect.width * chartMeta.w;
+        const t = chartMeta.tExtent[0] + (px - chartMeta.padL) / (chartMeta.w - chartMeta.padL - chartMeta.padR) * chartMeta.tSpan;
+        let lo = 0, hi = rows.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (rows[mid].ts < t) lo = mid + 1; else hi = mid;
+        }
+        return rows[lo];
+      }
+
+      hit.addEventListener('pointermove', (e) => {
+        const row = nearest(e.clientX);
+        const x = chartMeta.xScale(row.ts);
+        crosshair.setAttribute('x1', x.toFixed(1));
+        crosshair.setAttribute('x2', x.toFixed(1));
+        crosshair.style.opacity = 1;
+
+        let html = `<div class="tt-time"></div>`;
+        tooltip.innerHTML = '';
+        const timeDiv = document.createElement('div');
+        timeDiv.className = 'tt-time';
+        timeDiv.textContent = fmtTime(row.ts);
+        tooltip.appendChild(timeDiv);
+        series.forEach(s => {
+          const r = document.createElement('div');
+          r.className = 'tt-row';
+          const key = document.createElement('span');
+          key.className = 'tt-key';
+          key.style.background = s.color;
+          const val = document.createElement('span');
+          val.className = 'tt-val';
+          val.textContent = fmtW(row[s.key]);
+          const name = document.createElement('span');
+          name.className = 'tt-name';
+          name.textContent = s.name;
+          r.append(key, val, name);
+          tooltip.appendChild(r);
+        });
+        const svgRect = svgEl.getBoundingClientRect();
+        tooltip.style.left = (e.clientX - svgRect.left + 14) + 'px';
+        tooltip.style.top = (e.clientY - svgRect.top - 10) + 'px';
+        tooltip.style.opacity = 1;
+      });
+      hit.addEventListener('pointerleave', () => {
+        crosshair.style.opacity = 0;
+        tooltip.style.opacity = 0;
+      });
+    }
+
+    function legendHtml(series) {
+      return `<div class="legend">${series.map(s =>
+        `<span class="sw"><span class="ln" style="background:${s.color}"></span>${s.name}</span>`).join('')}</div>`;
+    }
+
+    function tableHtml(rows) {
+      const recent = rows.slice(-30).reverse();
+      return `<button class="table-toggle" id="table-toggle">View as table</button>
+        <table class="readings" id="readings-table" style="display:none">
+          <thead><tr><th>Time</th><th>PV</th><th>Battery</th><th>Voltage</th><th>Current</th><th>State</th></tr></thead>
+          <tbody>${recent.map(r => `<tr>
+            <td>${fmtTime(r.ts)}</td><td>${fmtW(r.pv_power)}</td><td>${fmtW(r.battery_power)}</td>
+            <td>${fmtV(r.battery_voltage)}</td><td>${fmtA(r.battery_current)}</td><td>${r.device_state_name}</td>
+          </tr>`).join('')}</tbody>
+        </table>`;
+    }
+
+    let currentHours = 24;
+
+    async function loadHistory(hours) {
+      currentHours = hours;
+      document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', +b.dataset.hours === hours));
+      const r = await fetch(`/app/api/solar/history?hours=${hours}`);
+      const d = await r.json();
+      const chartCard = $('chart-card');
+      if (!d.readings || d.readings.length < 2) {
+        chartCard.innerHTML = `<p class="empty">Not enough data yet for this range.</p>`;
+        return;
+      }
+      const series = [
+        { name: 'Solar input (PV)', color: cssVar('--series-pv'), key: 'pv_power' },
+        { name: 'Battery charging power', color: cssVar('--series-batt'), key: 'battery_power' },
+      ];
+      const meta = lineChart(d.readings, series, {
+        ariaLabel: 'Solar PV power and battery charging power over time',
+        tickFmt: hours <= 24 ? {hour:'2-digit', minute:'2-digit'} : {month:'short', day:'numeric'},
+      });
+      chartCard.innerHTML = legendHtml(series) + meta.svg + tableHtml(d.readings);
+      wireHover(chartCard, meta, d.readings, series);
+      const toggle = $('table-toggle');
+      toggle.addEventListener('click', () => {
+        const t = $('readings-table');
+        const showing = t.style.display !== 'none';
+        t.style.display = showing ? 'none' : 'table';
+        toggle.textContent = showing ? 'View as table' : 'Hide table';
+      });
+    }
+
+    async function load() {
+      const latestResp = await fetch('/app/api/solar/latest');
+      if (!latestResp.ok) {
+        $('body').innerHTML = '<p class="empty">No solar telemetry yet — waiting on the first reading from the gateway.</p>';
+        return;
+      }
+      const latest = await latestResp.json();
+
+      let html = '';
+      html += `<div style="margin-bottom:.9rem">${stateBadge(latest)} ${headroomBadge(latest)}</div>`;
+      html += `<div class="stats">
+        ${stat('Solar input (PV)', fmtW(latest.pv_power), 'right now', 'pv')}
+        ${stat('Battery charging power', fmtW(latest.battery_power), fmtV(latest.battery_voltage) + ' · ' + fmtA(latest.battery_current), 'batt')}
+        ${stat('Yield today', fmtKWh(latest.yield_today))}
+        ${stat('Last reading', fmtAgo(latest.ts), 'rssi ' + (latest.rssi ?? '—') + ' dBm')}
+      </div>`;
+
+      html += `<div class="range-row">
+        <button class="range-btn" data-hours="6">6h</button>
+        <button class="range-btn" data-hours="24">24h</button>
+        <button class="range-btn" data-hours="168">7d</button>
+      </div>`;
+      html += `<div class="card" id="chart-card"><p class="empty">Loading chart…</p></div>`;
+      html += `<p class="note">Battery charging power is voltage × current at the controller's battery
+        terminal. This model has no load output, so "waste" is inferred: panel power the charger
+        isn't using once it backs off into float/storage. That's a passive indicator only — it
+        doesn't switch anything (yet).</p>`;
+
+      $('body').innerHTML = html;
+      document.querySelectorAll('.range-btn').forEach(b => {
+        b.addEventListener('click', () => loadHistory(+b.dataset.hours));
+      });
+      loadHistory(currentHours);
+    }
+
+    load();
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>
