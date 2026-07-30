@@ -19,6 +19,7 @@ from app.settings import settings
 from app.templating import templates
 from shared.staticfiles import serve_file
 
+from .acquisition import shed_scanner
 from .models import get_departures_for_day, get_shed_detections_for_day, get_sightings_for_day, save_departure
 from .sessionize import _day_bounds_ms, day_sessions, departure_frames
 from .vision import VisionError, analyze_departure
@@ -53,6 +54,7 @@ async def naturalist_day(date: str | None = Query(default=None)):
     data["shed_detections"] = await run_in_threadpool(get_shed_detections_for_day, start_ms, end_ms)
     data["llm_ready"] = bool(settings.anthropic_api_key)
     data["acquisition_enabled"] = bool(settings.naturalist_auto_analyze)
+    data["shed_scan_state"] = shed_scanner.state
     return JSONResponse(data)
 
 
