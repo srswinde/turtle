@@ -1,0 +1,50 @@
+# Pinned snapshot of the ANACONDA (not venv) environment that actually runs the
+# GPU-side services on the host — swahle-hole-cam.service, swahle-shed-cam.service,
+# swahle-ml.service (modules.detect.ml_service, including modules.detect.owlv2).
+#
+# This is NOT installed via pip -r in normal operation — the services run against
+# the shared anaconda base env at /home/scott/anaconda3 directly (see the systemd
+# units in /etc/systemd/system/swahle-*.service, ExecStart=.../anaconda3/bin/python).
+# This file exists so the env is reproducible if the host is ever rebuilt; it is
+# NOT auto-installed by any script. See DEPLOY.md "GPU services (host systemd)".
+#
+# Regenerate after intentionally changing the ml host env:
+#   /home/scott/anaconda3/bin/python -c "
+#   import importlib.metadata as m
+#   for p in [...]: print(f'{p}=={m.version(p)}')"
+#
+# Captured 2026-07-12, deeplabcut added 2026-07-18. Python 3.11.8.
+# NVIDIA driver 580.159.03 (RTX 4070).
+
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+transformers==5.13.0        # OWLv2 (modules.detect.owlv2)
+tokenizers==0.22.2
+safetensors==0.8.0
+huggingface-hub==1.23.0
+numpy==1.26.4                # bumped by deeplabcut install (was 1.23.5); torch/transformers unaffected
+scipy==1.13.1
+deeplabcut==3.0.0            # pose estimation (modules.detect.pose), PyTorch engine
+matplotlib==3.8.4            # deeplabcut dep; downgraded from 3.10.5 by the install
+
+# Same web-app deps as swahle/requirements.txt (ml_service imports the shared
+# app/, shared/, modules/ tree) — kept in sync by hand, not by import.
+fastapi==0.139.0
+uvicorn==0.50.2
+pydantic-settings==2.14.2
+sqlalchemy==2.0.25
+pymysql==1.1.0
+pandas==2.3.1
+pillow==10.3.0
+requests==2.31.0
+httpx==0.28.1
+python-dateutil==2.8.2
+redis==5.0.6
+jinja2==3.1.3
+websockets==16.0
+amcrest==1.9.8
+pyjwt==2.4.0
+
+# Vendored sibling package (cassini classifier), editable install from its own repo:
+#   pip install -e /home/scott/git-clones/cassini_detect
+cassini_detect==0.1.0

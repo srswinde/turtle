@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Label Poses · Swahle</title>
+  <style>
+    :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec;
+      --accent:#2f7d4f; --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06); }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4;
+      --card:#171d25; --border:#262e39; --accent:#3fae6b;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35); } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+      padding:.85rem 1.25rem; background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; font-size:1.1rem; color:var(--fg); }
+    .site a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border); background:var(--card);
+      padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .wrap { max-width:820px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+    h1 { font-size:1.4rem; margin:0 0 .3rem; }
+    .progress { color:var(--muted); font-size:.9rem; margin-bottom:1rem; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      padding:1rem; }
+    .legend { display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:.8rem; }
+    .legend .item { display:flex; align-items:center; gap:.4rem; font-size:.82rem; color:var(--muted);
+      border:1px solid var(--border); border-radius:999px; padding:.3rem .6rem .3rem .5rem; cursor:pointer;
+      background:var(--bg); }
+    .legend .item.filled { color:var(--fg); }
+    .legend .item.active { color:var(--fg); font-weight:700; border-color:var(--fg); }
+    .legend .item .na { font-style:italic; opacity:.7; }
+    .dot { width:12px; height:12px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.3);
+      flex-shrink:0; }
+    .dot.hollow { background:transparent !important; box-shadow:0 0 0 1px var(--muted); }
+    .imgwrap { position:relative; line-height:0; cursor:crosshair; border-radius:8px; overflow:hidden;
+      border:1px solid var(--border); background:#000; }
+    .imgwrap img { width:100%; display:block; user-select:none; -webkit-user-drag:none; }
+    .marker { position:absolute; width:14px; height:14px; margin-left:-7px; margin-top:-7px;
+      border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.5); pointer-events:none; }
+    .prompt { margin-top:.9rem; font-size:1.05rem; font-weight:700; text-align:center; }
+    .prompt .hint { display:block; font-size:.8rem; font-weight:500; color:var(--muted); margin-top:.2rem; }
+    .controls { display:flex; justify-content:center; gap:.6rem; margin-top:.8rem; flex-wrap:wrap; }
+    .controls button { border:1px solid var(--border); background:var(--bg); color:var(--fg);
+      border-radius:8px; padding:.5rem 1rem; font-size:.88rem; font-weight:600; cursor:pointer; }
+    .controls button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .controls button:disabled { opacity:.5; cursor:not-allowed; }
+    .savedflash { color:var(--accent); font-weight:700; text-align:center; margin-top:.5rem; font-size:.85rem;
+      opacity:0; transition:opacity .2s; }
+    .savedflash.show { opacity:1; }
+    .empty { color:var(--muted); padding:3rem 0; text-align:center; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/app">🐢 Swahle</a>
+    <a class="back" href="/app">← Home</a>
+  </header>
+  <main class="wrap">
+    <h1>🎯 Label Poses</h1>
+    <div class="progress" id="progress">Loading…</div>
+    <div id="body"></div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const KEYPOINTS = ['head', 'shell_front', 'shell_center', 'shell_back'];
+    const KP_COLOR = { head:'#e0533d', shell_front:'#e0a53d', shell_center:'#3d7de0', shell_back:'#2f7d4f' };
+    const KP_LABEL = { head:'head', shell_front:'front edge of shell', shell_center:'center of shell', shell_back:'back edge of shell' };
+
+    // Navigation model: `history` holds every frame saved this session, oldest
+    // first. `histPos` is which one is on screen -- when it equals
+    // history.length we're on a fresh, not-yet-saved frame (`current`/`points`
+    // hold its in-progress state; `pending` caches it across Back/Forward so
+    // in-progress clicks survive a trip through history and back).
+    let history = [];         // [{path, image_url, points}]
+    let histPos = 0;
+    let current = null;       // {path, image_url} on screen right now
+    let points = {};          // keypoint -> {x, y, visible} for `current`
+    let active = null;        // keypoint the next click/skip/clear applies to
+    let pending = null;       // cached in-progress fresh frame, see above
+    let labeledCount = 0, target = 0;
+
+    function atFreshEdge() { return histPos === history.length; }
+
+    function firstUnfilled() {
+      return KEYPOINTS.find(k => !(k in points)) || null;
+    }
+
+    function updateProgress() {
+      $('progress').textContent = target
+        ? `${labeledCount} / ${target} frames labeled` + (atFreshEdge() ? '' : '  ·  reviewing a previous frame')
+        : '';
+    }
+
+    function renderMarkers(img) {
+      document.querySelectorAll('.marker').forEach(m => m.remove());
+      const wrap = img.parentElement;
+      for (const [kp, p] of Object.entries(points)) {
+        if (!p.visible) continue;
+        const el = document.createElement('div');
+        el.className = 'marker';
+        el.style.background = KP_COLOR[kp];
+        el.style.left = (p.x / img.naturalWidth * img.clientWidth) + 'px';
+        el.style.top = (p.y / img.naturalHeight * img.clientHeight) + 'px';
+        wrap.appendChild(el);
+      }
+    }
+
+    function renderLegend() {
+      return `<div class="legend">${KEYPOINTS.map((kp) => {
+        const has = kp in points;
+        const vis = has && points[kp].visible;
+        return `<span class="item ${has ? 'filled' : ''} ${kp === active ? 'active' : ''}" data-kp="${kp}">
+          <span class="dot ${vis ? '' : 'hollow'}" style="${vis ? `background:${KP_COLOR[kp]}` : ''}"></span>
+          ${KP_LABEL[kp]}${has && !vis ? ' <span class="na">(not visible)</span>' : ''}
+        </span>`;
+      }).join('')}</div>`;
+    }
+
+    function renderFrame() {
+      if (!current) {
+        $('body').innerHTML = '<p class="empty">All sampled frames are labeled. 🎉</p>';
+        return;
+      }
+      $('body').innerHTML = `<div class="card">
+          ${renderLegend()}
+          <div class="imgwrap"><img id="frameImg" src="${current.image_url}" alt="frame to label"></div>
+          <div class="prompt" id="prompt"></div>
+          <div class="controls">
+            <button id="skipBtn">Not visible</button>
+            <button id="clearBtn">Clear this point</button>
+          </div>
+          <div class="controls">
+            <button id="backBtn">◀ Back</button>
+            <button id="forwardBtn">Forward ▶</button>
+            <button id="saveBtn" class="primary">Save${atFreshEdge() ? ' & next' : ''}</button>
+          </div>
+          <div class="savedflash" id="savedFlash">Saved ✓</div>
+        </div>`;
+      const img = $('frameImg');
+      if (img.complete) renderMarkers(img);  // cached image: 'load' won't refire
+      img.addEventListener('load', () => renderMarkers(img));
+      img.addEventListener('click', onImageClick);
+      $('skipBtn').addEventListener('click', () => setActivePoint(null, null, false));
+      $('clearBtn').addEventListener('click', clearActive);
+      $('backBtn').addEventListener('click', goBack);
+      $('forwardBtn').addEventListener('click', goForward);
+      $('saveBtn').addEventListener('click', save);
+      document.querySelectorAll('.legend .item').forEach(el =>
+        el.addEventListener('click', () => { active = el.dataset.kp; updateChrome(); }));
+      updateChrome();
+    }
+
+    function updateChrome() {
+      $('prompt').innerHTML = active
+        ? `Click: ${KP_LABEL[active]}<span class="hint">or use "Not visible" / "Clear this point"</span>`
+        : 'All 4 keypoints set — click one above to redo it, or Save';
+      $('backBtn').disabled = histPos === 0;
+      $('forwardBtn').disabled = atFreshEdge();
+      $('saveBtn').disabled = firstUnfilled() !== null;
+      document.querySelectorAll('.legend .item').forEach(el =>
+        el.classList.toggle('active', el.dataset.kp === active));
+    }
+
+    function onImageClick(e) {
+      if (!active) return;
+      const img = $('frameImg');
+      const rect = img.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width * img.naturalWidth;
+      const y = (e.clientY - rect.top) / rect.height * img.naturalHeight;
+      setActivePoint(x, y, true);
+    }
+
+    function setActivePoint(x, y, visible) {
+      if (!active) return;
+      points[active] = { x, y, visible };
+      active = firstUnfilled();
+      const img = $('frameImg');
+      if (img) renderMarkers(img);
+      renderFrame();
+    }
+
+    function clearActive() {
+      if (!active || !(active in points)) return;
+      delete points[active];
+      const img = $('frameImg');
+      if (img) renderMarkers(img);
+      renderFrame();
+    }
+
+    function showCurrent(entry) {
+      current = { path: entry.path, image_url: entry.image_url };
+      points = { ...entry.points };
+      active = firstUnfilled();
+      updateProgress();
+      renderFrame();
+    }
+
+    function goBack() {
+      if (histPos === 0) return;
+      if (atFreshEdge()) pending = { path: current.path, image_url: current.image_url, points: { ...points } };
+      else history[histPos].points = { ...points };  // keep in-memory edits when leaving a history frame
+      histPos -= 1;
+      showCurrent(history[histPos]);
+    }
+
+    async function goForward() {
+      if (atFreshEdge()) return;
+      history[histPos].points = { ...points };  // keep in-memory edits when leaving a history frame
+      histPos += 1;
+      if (histPos < history.length) {
+        showCurrent(history[histPos]);
+      } else if (pending) {
+        showCurrent(pending);
+      } else {
+        await loadFreshFrame();
+      }
+    }
+
+    async function save() {
+      if (firstUnfilled() !== null) return;
+      await fetch('/app/api/pose/label', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: current.path, points }),
+      });
+      if (atFreshEdge()) {
+        history.push({ path: current.path, image_url: current.image_url, points: { ...points } });
+        labeledCount += 1;
+        histPos = history.length;
+        pending = null;
+        await loadFreshFrame();
+      } else {
+        history[histPos].points = { ...points };
+        const flash = $('savedFlash');
+        if (flash) { flash.classList.add('show'); setTimeout(() => flash.classList.remove('show'), 1200); }
+      }
+    }
+
+    async function loadFreshFrame() {
+      $('body').innerHTML = '<p class="empty">Loading…</p>';
+      const r = await fetch('/app/api/pose/next-frame');
+      const data = await r.json();
+      labeledCount = data.labeled;
+      target = data.target;
+      if (!data.path) { current = null; updateProgress(); renderFrame(); return; }
+      showCurrent({ path: data.path, image_url: data.image_url, points: {} });
+    }
+
+    loadFreshFrame();
+  </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+[Unit]
+Description=Swahle smart-mirror app (LAN-only, separate from swahle-web)
+After=network-online.target
+Wants=network-online.target
+# Best-effort ordering only -- the app degrades gracefully if Redis/DB/ml
+# aren't up yet (the bus listener and pool builder both retry).
+After=swahle-ml.service
+
+[Service]
+Type=simple
+User=scott
+WorkingDirectory=/home/scott/git-clones/turtle_db
+Environment=PYTHONPATH=/home/scott/git-clones/turtle_db/swahle:/home/scott/git-clones/turtle_db
+# Bind to this box's LAN address only -- there is deliberately no Cloudflare
+# tunnel route for this port.
+Environment=SWAHLE_MIRROR_BIND_HOST=192.168.0.164
+Environment=SWAHLE_MIRROR_PORT=8800
+# OWLv2 "person" re-check for slideshow frames -- same host ml service the
+# GPU units run (swahle-ml.service, 0.0.0.0:9200).
+Environment=SWAHLE_ML_SERVICE_URL=http://127.0.0.1:9200
+# The mirror event bus. swahle-web publishes to this Redis; it must be
+# reachable from the host. If Redis runs only as a container, publish its
+# 6379 to the host (or set this to wherever it listens). DB uses the
+# localhost default, same as swahle-ml.service.
+Environment=SWAHLE_REDIS_HOST=127.0.0.1
+Environment=SWAHLE_REDIS_PORT=6379
+# Optional second gate for other LAN devices: set a long random string and
+# enroll the mirror once at http://192.168.0.164:8800/mirror/enroll?token=...
+# Environment=SWAHLE_MIRROR_TOKEN=change-me
+# --timeout-graceful-shutdown: the mirror holds long-lived SSE streams
+# (/mirror/events) that never end on their own, so without this uvicorn waits
+# out the full stop timeout on every restart. KillMode=mixed + a short
+# TimeoutStopSec are the backstop.
+ExecStart=/home/scott/anaconda3/bin/python -m uvicorn app.mirror_app:app --host 192.168.0.164 --port 8800 --timeout-graceful-shutdown 5
+KillMode=mixed
+TimeoutStopSec=15
+# Creates /var/lib/swahle (owned by scott) for mirror_state.json -- matches
+# settings.mirror_state_path.
+StateDirectory=swahle
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

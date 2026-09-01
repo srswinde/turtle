@@ -1,0 +1,71 @@
+# MediaMTX config: pulls each camera's RTSP sub-stream and republishes as
+# browser-playable HLS (H.264 + AAC remuxed, no re-encode -- both camera
+# codecs are already browser-native, confirmed via ffprobe 2026-08-23).
+# hole-cam pulls continuously; shed-cam pulls on-demand only (see its path
+# entry below -- that camera is capacity-constrained). Proxied through the
+# swahle-web FastAPI app at
+# /app/live/<cam>/... (see modules/cameras/router.py) so it reuses the
+# existing Cloudflare Access auth -- no new tunnel/Access config needed.
+#
+# Detection frame-sampling (hole_cam.py/shed_cam.py) intentionally does NOT
+# read from this -- it stays on the separate Amcrest snapshot() API. See
+# naturalist memory: the VGG classifier's false-positive behavior was hand-
+# calibrated against that exact pipeline; swapping its input source risks
+# silently reopening that investigation.
+#
+# Sub-streams (not main) are used as the source -- lower bandwidth/CPU for
+# continuous remuxing, plenty sharp for a live-view dashboard. Bump to
+# subtype=0 per-camera below if higher resolution is ever wanted.
+
+logLevel: info
+
+# Only HLS is needed -- this app pulls RTSP as a client (see paths below) and
+# serves HLS out; it doesn't need to accept RTSP/RTMP/SRT/WebRTC connections
+# itself, so those listeners are disabled to shrink the exposed surface.
+api: false
+metrics: false
+pprof: false
+rtsp: false
+rtmp: false
+srt: false
+webrtc: false
+
+hls: true
+hlsAddress: :8888
+hlsAllowOrigins: ["*"]
+# Classic (MPEG-TS) HLS, not LL-HLS -- a few seconds of latency is fine for a
+# wildlife-cam dashboard, and mpegts is the most broadly compatible variant
+# with hls.js/Safari, trading LL-HLS's sub-2s latency for robustness.
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+# hlsAlwaysRemux (keep an HLS muxer running even with zero viewers, for
+# instant-load playback) is a GLOBAL-only setting -- it can't be scoped to
+# just one camera. Left off (2026-08-24) because it forces the muxer to act
+# as a permanent internal "reader", which would keep pulling the shed
+# camera's RTSP source continuously regardless of the per-path sourceOnDemand
+# setting below -- exactly what we're trying to avoid. Cost is small: hole's
+# source still connects immediately (sourceOnDemand defaults false, unset
+# below), so its muxer creation on first viewer is near-instant anyway.
+hlsAlwaysRemux: false
+
+paths:
+  hole:
+    source: rtsp://admin:4_sw@hle_4@192.168.0.36:554/cam/realmonitor?channel=1&subtype=1
+    rtspTransport: tcp
+  shed:
+    # 2026-08-24: this camera is measurably more capacity-constrained than
+    # hole-cam -- its own ingest service (shed_cam.py, polling snapshot +
+    # motion/human-detection every ~2s) was already logging hundreds of
+    # ConnectTimeout retries against ITSELF per hour before live view existed
+    # (confirmed via the camera's own log_show() event log vs. hole-cam's,
+    # and swahle-shed-cam.service's journal). Our own continuous RTSP pull
+    # for live video was a new permanent tenant competing for the same
+    # scarce capacity, and manifested as HLS manifest-load errors in the
+    # browser. sourceOnDemand limits our footprint to only while someone is
+    # actually watching /app/live, instead of a 24/7 background connection.
+    source: rtsp://admin:admin@192.168.0.27:554/cam/realmonitor?channel=1&subtype=1
+    rtspTransport: tcp
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 15s   # camera can be slow to respond under load; default 10s was tight
+    sourceOnDemandCloseAfter: 30s     # avoid rapid reconnect churn on quick page refreshes

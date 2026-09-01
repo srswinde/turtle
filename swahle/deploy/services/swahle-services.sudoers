@@ -1,0 +1,3 @@
+# Install as /etc/sudoers.d/swahle-services (mode 0440, via visudo -cf first).
+# Lets the services agent (scott) start/stop/restart ONLY these units, no password.
+scott ALL=(root) NOPASSWD: /usr/bin/systemctl start swahle-hole-cam.service, /usr/bin/systemctl stop swahle-hole-cam.service, /usr/bin/systemctl restart swahle-hole-cam.service, /usr/bin/systemctl start swahle-shed-cam.service, /usr/bin/systemctl stop swahle-shed-cam.service, /usr/bin/systemctl restart swahle-shed-cam.service, /usr/bin/systemctl start swahle-ml.service, /usr/bin/systemctl stop swahle-ml.service, /usr/bin/systemctl restart swahle-ml.service

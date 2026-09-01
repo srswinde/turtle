@@ -1,0 +1,25 @@
+# Web image: FastAPI app (public + private routers). Torch-free.
+# Build context is the repo root (see docker-compose.yml `context: ..`), so the
+# legacy `turtle_db` package (whose ORM models shared.models reuses) is available.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY swahle/requirements.txt /app/swahle/requirements.txt
+RUN pip install --no-cache-dir -r /app/swahle/requirements.txt
+
+# App code + the legacy turtle_db package (ORM models only).
+COPY swahle/ /app/swahle/
+COPY turtle_db/ /app/turtle_db/
+
+ENV PYTHONPATH=/app/swahle:/app
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8000/healthz || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

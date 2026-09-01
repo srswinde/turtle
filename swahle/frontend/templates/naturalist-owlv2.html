@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OWLv2 Detector Findings · Swahle</title>
+  <style>
+    :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec;
+      --accent:#2f7d4f; --bad:#e0533d; --warn:#e0a53d;
+      --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06);
+      /* dataviz categorical slots 1 (blue, "signal") and 2 (aqua, "baseline") —
+         validated: node scripts/validate_palette.js, light surface #ffffff /
+         dark surface #171d25 (this page's card color). Light-mode aqua warns on
+         contrast (2.82:1) — mitigated by direct value labels on every bar (see below). */
+      --series-dep:#2a78d6; --series-base:#1baf7a; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4;
+      --card:#171d25; --border:#262e39; --accent:#3fae6b; --bad:#e0664f; --warn:#e0a53d;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+      --series-dep:#3987e5; --series-base:#199e70; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+      padding:.85rem 1.25rem; background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; font-size:1.1rem; color:var(--fg); }
+    .site a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border); background:var(--card);
+      padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .wrap { max-width:920px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+    h1 { font-size:1.5rem; margin:0 0 .35rem; }
+    .lede { color:var(--muted); font-size:.95rem; line-height:1.55; max-width:68ch; margin:0 0 1.5rem; }
+    h2 { font-size:1.1rem; margin:2.2rem 0 .4rem; }
+    p.sub { color:var(--muted); font-size:.85rem; margin:0 0 1rem; max-width:70ch; line-height:1.5; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      padding:1.2rem 1.3rem; margin-bottom:1rem; }
+
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(9.5rem,1fr)); gap:.8rem; }
+    .stat { background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow);
+      padding:.85rem 1rem; }
+    .stat .k { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+    .stat .v { font-size:1.5rem; font-weight:700; margin-top:.2rem; }
+    .stat .v.dep { color:var(--series-dep); }
+    .stat .d { font-size:.78rem; color:var(--muted); margin-top:.15rem; }
+
+    .legend { display:flex; gap:1.1rem; align-items:center; font-size:.82rem; color:var(--muted); margin-bottom:.6rem; }
+    .legend .sw { display:inline-flex; align-items:center; gap:.4rem; }
+    .legend .dot { width:10px; height:10px; border-radius:3px; }
+    svg.chart { width:100%; height:auto; overflow:visible; }
+    .bar-label { font-size:10px; fill:var(--fg); font-weight:600; }
+    .bar-label.dim { fill:var(--muted); font-weight:500; }
+    .axis-label { font-size:10.5px; fill:var(--muted); }
+    .bar-rect { cursor:default; }
+    .bar-rect:hover { filter:brightness(1.08); }
+    .tick-line { stroke:var(--border); stroke-width:1; }
+    .note { color:var(--muted); font-size:.78rem; margin-top:.6rem; line-height:1.5; }
+
+    .gallery { display:grid; grid-template-columns:repeat(auto-fit, minmax(15rem,1fr)); gap:1rem; }
+    .ex-card { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      overflow:hidden; }
+    .ex-card img { width:100%; display:block; background:var(--bg); }
+    .ex-body { padding:.8rem .9rem; }
+    .ex-badge { font-size:.72rem; font-weight:700; padding:.2rem .55rem; border-radius:999px; display:inline-block;
+      margin-bottom:.4rem; }
+    .ex-badge.yes { color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent); }
+    .ex-badge.no { color:var(--bad); background:color-mix(in srgb, var(--bad) 16%, transparent); }
+    .ex-meta { font-size:.8rem; color:var(--muted); }
+    .ex-note { font-size:.83rem; margin-top:.35rem; }
+    .ex-pair { display:flex; gap:.5rem; margin-top:.6rem; align-items:center; }
+    .ex-pair img.thumb { width:3.4rem; height:3.4rem; object-fit:cover; border-radius:8px; border:1px solid var(--border); }
+    .ex-pair .arrow { color:var(--muted); font-size:1.1rem; }
+
+    .steps { counter-reset:step; list-style:none; padding:0; margin:0; }
+    .steps li { counter-increment:step; position:relative; padding-left:2.4rem; margin-bottom:.9rem; font-size:.9rem;
+      line-height:1.5; color:var(--fg); }
+    .steps li::before { content:counter(step); position:absolute; left:0; top:0; width:1.7rem; height:1.7rem;
+      border-radius:50%; background:var(--accent); color:#fff; font-weight:700; font-size:.82rem;
+      display:flex; align-items:center; justify-content:center; }
+    .steps b { display:block; margin-bottom:.15rem; }
+    .empty { color:var(--muted); padding:2.5rem 0; text-align:center; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/app">🐢 Swahle</a>
+    <a class="back" href="/app/naturalist">← Cassini's Day</a>
+  </header>
+  <main class="wrap">
+    <h1>🦉 OWLv2 Detector: Findings</h1>
+    <p class="lede">
+      An open-vocabulary object detector (OWLv2) now runs on the ML host and can locate
+      "a tortoise" in any camera frame by text prompt — unlike the shed-cam's original
+      Faster R-CNN detector, which only knows 80 fixed COCO classes and has none for
+      tortoise. This page documents what OWLv2 is, how it was validated against two
+      years of real camera data, and what it found.
+    </p>
+
+    <div id="body"><p class="empty">Loading findings…</p></div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmtPct = (x) => (x * 100).toFixed(1) + '%';
+    const fmtSec = (s) => s == null ? '—' : (s < 90 ? Math.round(s) + 's' : (s/60).toFixed(1) + 'm');
+    const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+    function stat(k, v, d, cls) {
+      return `<div class="stat"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div>` +
+        (d ? `<div class="d">${d}</div>` : '') + `</div>`;
+    }
+
+    // Minimal SVG bar chart. series: [{name,color,bins:[{lo,hi,count}]}], all series
+    // share the same bin edges. Direct value labels always on (small n; satisfies the
+    // light-mode aqua contrast relief requirement from the palette validator).
+    function barChart(series, opts) {
+      const w = 720, h = 220, padL = 34, padB = 34, padT = 10, padR = 8;
+      const bins = series[0].bins;
+      const n = bins.length;
+      const groupW = (w - padL - padR) / n;
+      const barGap = 3;
+      const barW = (groupW - barGap * (series.length + 1)) / series.length;
+      const maxCount = Math.max(1, ...series.flatMap(s => s.bins.map(b => b.count)));
+      const yScale = (c) => (h - padB - padT) * (c / maxCount);
+      const fmtBin = (b) => opts.binLabel ? opts.binLabel(b) : `${b.lo}–${b.hi}`;
+
+      let svg = `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${opts.ariaLabel||''}">`;
+      // gridlines (4 steps)
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + (h - padB - padT) * (1 - i/4);
+        svg += `<line class="tick-line" x1="${padL}" x2="${w-padR}" y1="${y}" y2="${y}"/>`;
+      }
+      bins.forEach((b, i) => {
+        const gx = padL + i * groupW;
+        series.forEach((s, si) => {
+          const c = s.bins[i].count;
+          const bh = yScale(c);
+          const bx = gx + barGap + si * (barW + barGap);
+          const by = h - padB - bh;
+          svg += `<rect class="bar-rect" x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(bh,0).toFixed(1)}" rx="3" fill="${s.color}"><title>${s.name}: ${fmtBin(b)} — ${c}</title></rect>`;
+          if (c > 0) {
+            svg += `<text class="bar-label ${series.length>1?'dim':''}" x="${(bx+barW/2).toFixed(1)}" y="${(by-4).toFixed(1)}" text-anchor="middle">${c}</text>`;
+          }
+        });
+        if (i % opts.everyNth === 0 || i === n-1) {
+          svg += `<text class="axis-label" x="${(gx+groupW/2).toFixed(1)}" y="${h-padB+16}" text-anchor="middle">${fmtBin(b)}</text>`;
+        }
+      });
+      svg += `</svg>`;
+      return svg;
+    }
+
+    function legendHtml(series) {
+      if (series.length < 2) return '';
+      return `<div class="legend">${series.map(s =>
+        `<span class="sw"><span class="dot" style="background:${s.color}"></span>${s.name}</span>`).join('')}</div>`;
+    }
+
+    function exampleCard(ex) {
+      const badge = ex.verified
+        ? `<span class="ex-badge yes">✓ confirmed tortoise</span>`
+        : `<span class="ex-badge no">⚠ likely false positive</span>`;
+      const pair = ex.hole_departure_url ? `
+        <div class="ex-pair">
+          <img class="thumb" src="${ex.hole_departure_url}" alt="hole-cam departure" loading="lazy">
+          <span class="arrow">→</span>
+          <span class="ex-meta">left the hole, seen ${fmtSec(ex.lag_seconds)} later</span>
+        </div>` : '';
+      return `<div class="ex-card">
+          <img src="${ex.shed_example_url}" alt="shed-cam detection" loading="lazy">
+          <div class="ex-body">
+            ${badge}
+            <div class="ex-meta">OWLv2 score ${ex.score.toFixed(3)}</div>
+            <div class="ex-note">${ex.note}</div>
+            ${pair}
+          </div>
+        </div>`;
+    }
+
+    async function load() {
+      const r = await fetch('/app/api/naturalist/owlv2/findings');
+      if (!r.ok) {
+        $('body').innerHTML = '<p class="empty">Findings haven\'t been generated yet.</p>';
+        return;
+      }
+      const d = await r.json();
+      const hc = d.hole_confirmation, sc = d.shed_correlation, lag = d.lag_distribution;
+
+      let html = '';
+
+      html += `<div class="stats">
+        ${stat('Hole-cam sessions confirmed', `${hc.confirmed.toLocaleString()}`, `of ${hc.candidate_sessions.toLocaleString()} candidates (${fmtPct(hc.confirmed/hc.candidate_sessions)})`)}
+        ${stat('Departure → shed hit rate', fmtPct(sc.departure_hit_rate), `${sc.n_departures} departures tested`, 'dep')}
+        ${stat('Random baseline hit rate', fmtPct(sc.baseline_hit_rate), `${sc.n_departures} random windows`)}
+        ${stat('Lift', sc.lift.toFixed(2) + 'x', 'departure vs baseline', 'dep')}
+        ${stat('Median lag', fmtSec(lag.median_seconds), `n=${lag.n} confirmed hits`)}
+      </div>`;
+
+      html += `<h2>Is a hole-cam "departure" really Cassini?</h2>
+        <p class="sub">The hole-cam's own classifier has a calibration bug — its highest-confidence
+        readings turned out to be a static night-IR false-positive pattern (dead branches lit by
+        infrared), not Cassini. Its <code>prob&gt;0.70</code> output was used only as a cheap
+        candidate filter (~4,000 sessions out of 14M frames); OWLv2 then checked each session's
+        peak-confidence frame directly for "a tortoise" / "a turtle shell". This is the distribution
+        of those OWLv2 scores — the peak near 0 is exactly that false-positive pattern, correctly
+        rejected; the peak near 0.7&ndash;0.9 is real sightings, day and (in hot months) night alike.</p>
+        <div class="card">${barChart(
+          [{name:'sessions', color: cssVar('--series-dep'), bins: hc.score_histogram}],
+          {everyNth:1, ariaLabel:'Histogram of OWLv2 confidence scores for candidate hole-cam sessions',
+           binLabel:(b)=>b.lo.toFixed(1)}
+        )}</div>`;
+
+      html += `<h2>Does a departure predict a shed-cam sighting?</h2>
+        <p class="sub">For ${sc.n_departures} OWLv2-confirmed departures, the shed cam was checked with
+        OWLv2 in the ${sc.window_seconds/60|0} minutes after (${sc.frames_per_window} sampled frames per
+        window), and compared against ${sc.n_departures} random-time windows of the same size. A window
+        "hits" if any sampled frame scores above ${sc.hit_threshold}. Departure-linked windows hit at
+        <b>${fmtPct(sc.departure_hit_rate)}</b> vs <b>${fmtPct(sc.baseline_hit_rate)}</b> for random
+        windows — a <b>${sc.lift.toFixed(2)}x</b> lift. Every departure-window "hit" shown below near
+        score 0.85 was visually spot-checked against the actual image.</p>
+        <div class="card">
+          ${legendHtml([{name:'after a departure', color:'var(--series-dep)'}, {name:'random baseline', color:'var(--series-base)'}])}
+          ${barChart([
+            {name:'after a departure', color: cssVar('--series-dep'), bins: sc.departure_score_histogram},
+            {name:'random baseline', color: cssVar('--series-base'), bins: sc.baseline_score_histogram},
+          ], {everyNth:1, ariaLabel:'Comparison histogram of shed-cam OWLv2 scores after a departure vs random baseline windows', binLabel:(b)=>b.lo.toFixed(1)})}
+        </div>`;
+
+      html += `<h2>How long after leaving does he show up?</h2>
+        <p class="sub">Lag from the hole-cam departure to the best-scoring shed-cam frame, for the
+        ${lag.n} confirmed hits above. Median ${fmtSec(lag.median_seconds)}, mean ${fmtSec(lag.mean_seconds)}.
+        ${lag.window_censored_note}</p>
+        <div class="card">${barChart(
+          [{name:'hits', color: cssVar('--series-dep'), bins: lag.histogram}],
+          {everyNth:1, ariaLabel:'Histogram of lag in seconds from departure to shed-cam sighting',
+           binLabel:(b)=> b.hi<=60 ? `${b.lo}-${b.hi}s` : `${(b.lo/60).toFixed(0)}-${(b.hi/60).toFixed(0)}m`}
+        )}</div>`;
+
+      if (d.examples && d.examples.length) {
+        html += `<h2>Example detections</h2>
+          <p class="sub">Boxes are OWLv2's own output, drawn directly from its returned coordinates —
+          not hand-annotated. Included one likely false positive for an honest picture of precision
+          at this threshold.</p>
+          <div class="gallery">${d.examples.map(exampleCard).join('')}</div>`;
+      }
+
+      html += `<h2>How this pipeline works</h2>
+        <ol class="steps">
+          <li><b>Confirm.</b> ~4,000 hole-cam sessions (classifier prob&gt;0.70, a lenient pre-filter)
+            each get their peak-confidence frame checked by OWLv2 for "a tortoise" — separating real
+            sightings from the night-IR false-positive pattern.</li>
+          <li><b>Correlate.</b> A sample of confirmed departures gets their shed-cam frames checked by
+            OWLv2 for the following 10 minutes, compared against random-time baseline windows of the
+            same size.</li>
+          <li><b>Localize.</b> For every hit, OWLv2 is re-run to find the exact best-scoring frame and
+            its bounding box, giving a precise lag and a drawable detection.</li>
+          <li><b>Report.</b> Histograms, hit rates, and a curated example gallery are written to a
+            findings file this page reads live — no rebuild needed to refresh.</li>
+        </ol>`;
+
+      $('body').innerHTML = html;
+    }
+
+    load();
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

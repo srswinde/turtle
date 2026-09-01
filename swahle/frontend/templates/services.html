@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Services · Swahle</title>
+  <style>
+    :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec;
+      --on:#22c55e; --off:#94a3b8; --bad:#e0533d; --warn:#e0a53d; --accent:#2f7d4f;
+      --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06); }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4;
+      --card:#171d25; --border:#262e39; --on:#3fae6b; --off:#5a6675; --bad:#e0664f; --warn:#e0a53d; --accent:#3fae6b;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35); } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+      padding:.85rem 1.25rem; background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; font-size:1.1rem; }
+    .site a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border); background:var(--card);
+      padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .wrap { max-width:820px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+    .head { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+    h1 { font-size:1.5rem; margin:0; }
+    .refresh { cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--fg);
+      border-radius:999px; padding:.45rem .8rem; font-weight:600; font-size:.85rem; }
+    .banner { background:color-mix(in srgb, var(--bad) 15%, transparent); color:var(--bad);
+      border:1px solid color-mix(in srgb,var(--bad) 40%, transparent); border-radius:10px; padding:.6rem .9rem;
+      font-size:.9rem; margin-bottom:1rem; display:none; }
+    .svc { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      padding:1rem 1.15rem; margin-bottom:.9rem; }
+    .row { display:flex; align-items:center; gap:1rem; }
+    .meta { flex:1; min-width:0; }
+    .name { font-weight:700; }
+    .desc { font-size:.82rem; color:var(--muted); margin-top:.1rem; }
+    .pill { font-size:.75rem; font-weight:700; padding:.25rem .6rem; border-radius:999px;
+      display:inline-flex; align-items:center; gap:.4rem; }
+    .pill .dot { width:8px; height:8px; border-radius:50%; background:currentColor; }
+    .pill.on { color:var(--on); background:color-mix(in srgb,var(--on) 16%, transparent); }
+    .pill.off { color:var(--off); background:color-mix(in srgb,var(--off) 18%, transparent); }
+    .pill.bad { color:var(--bad); background:color-mix(in srgb,var(--bad) 16%, transparent); }
+    .pill.warn { color:var(--warn); background:color-mix(in srgb,var(--warn) 18%, transparent); }
+    .btns { display:flex; gap:.4rem; margin-top:.9rem; flex-wrap:wrap; }
+    .btns button { cursor:pointer; border-radius:8px; padding:.4rem .8rem; font-weight:600; font-size:.85rem;
+      border:1px solid var(--border); background:var(--card); color:var(--fg); }
+    .btns button.start { background:var(--accent); color:#fff; border-color:transparent; }
+    .btns button:disabled { opacity:.5; cursor:not-allowed; }
+    .btns button.logs { margin-left:auto; }
+    pre.log { display:none; margin:.8rem 0 0; background:#0f172a; color:#e2e8f0; padding:.8rem; border-radius:8px;
+      max-height:260px; overflow:auto; font-size:12px; white-space:pre-wrap; }
+    .empty { color:var(--muted); padding:2rem 0; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/app">🐢 Swahle</a>
+    <a class="back" href="/app">← Home</a>
+  </header>
+  <main class="wrap">
+    <div class="head"><h1>🛠️ Services</h1><button class="refresh" id="refresh">↻ Refresh</button></div>
+    <div class="banner" id="banner"></div>
+    <div id="list"><p class="empty">Loading…</p></div>
+  </main>
+
+  <script>
+    const logTimers = {};
+    async function api(url, opts) { const r = await fetch(url, opts); return { ok:r.ok, data: await r.json().catch(()=>({})) }; }
+
+    function pillFor(s) {
+      if (s.load === 'not-found' || !s.enabled || s.enabled === 'not-found') return { t:'Not installed', c:'off' };
+      if (s.active === 'active') return { t:'Running', c:'on' };
+      if (s.active === 'failed') return { t:'Failed', c:'bad' };
+      if (s.active === 'activating' || s.active === 'deactivating') return { t:s.active, c:'warn' };
+      return { t:'Stopped', c:'off' };
+    }
+
+    async function act(name, action, card) {
+      card.querySelectorAll('button').forEach(b => b.disabled = true);
+      const { ok, data } = await api(`/app/api/services/${name}/${action}`, { method:'POST' });
+      if (!ok) alert(data.error || `${action} failed`);
+      setTimeout(load, 600);  // let systemd settle, then refresh
+    }
+
+    function toggleLogs(name, card) {
+      const pre = card.querySelector('pre.log');
+      const open = pre.style.display === 'block';
+      if (open) { pre.style.display = 'none'; clearInterval(logTimers[name]); return; }
+      pre.style.display = 'block';
+      const pull = async () => { const { data } = await api(`/app/api/services/${name}/logs?lines=150`); pre.textContent = data.log || '(no logs)'; pre.scrollTop = pre.scrollHeight; };
+      pull(); logTimers[name] = setInterval(pull, 3000);
+    }
+
+    async function load() {
+      const list = document.getElementById('list'), banner = document.getElementById('banner');
+      const { ok, data } = await api('/app/api/services');
+      if (!ok || !Array.isArray(data)) {
+        banner.style.display = 'block';
+        banner.textContent = (data && data.error) ? ('Services agent: ' + data.error) : 'Could not reach the services agent.';
+        list.innerHTML = ''; return;
+      }
+      banner.style.display = 'none';
+      Object.values(logTimers).forEach(clearInterval);
+      list.innerHTML = '';
+      if (!data.length) { list.innerHTML = '<p class="empty">No services configured.</p>'; return; }
+      for (const s of data) {
+        const p = pillFor(s);
+        const running = s.active === 'active';
+        const card = document.createElement('div');
+        card.className = 'svc';
+        card.innerHTML =
+          `<div class="row"><div class="meta"><div class="name">${s.name}</div><div class="desc">${s.description||''}</div></div>
+             <span class="pill ${p.c}"><span class="dot"></span>${p.t}</span></div>
+           <div class="btns">
+             <button class="start" data-a="start" ${running?'disabled':''}>Start</button>
+             <button data-a="stop" ${running?'':'disabled'}>Stop</button>
+             <button data-a="restart">Restart</button>
+             <button class="logs">Logs</button>
+           </div>
+           <pre class="log"></pre>`;
+        card.querySelectorAll('.btns button[data-a]').forEach(b =>
+          b.addEventListener('click', () => act(s.name, b.dataset.a, card)));
+        card.querySelector('.logs').addEventListener('click', () => toggleLogs(s.name, card));
+        list.appendChild(card);
+      }
+    }
+    document.getElementById('refresh').addEventListener('click', load);
+    load(); setInterval(load, 15000);
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

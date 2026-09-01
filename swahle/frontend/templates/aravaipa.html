@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aravaipa Permits · Swahle</title>
+  <style>
+    :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec;
+      --accent:#2f7d4f; --bad:#e0533d; --warn:#e0a53d;
+      --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06); }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4;
+      --card:#171d25; --border:#262e39; --accent:#3fae6b; --bad:#e0664f; --warn:#e0a53d;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35); } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+      padding:.85rem 1.25rem; background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; font-size:1.1rem; color:var(--fg); }
+    .site a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border); background:var(--card);
+      padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .wrap { max-width:920px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+    h1 { font-size:1.5rem; margin:0 0 .35rem; }
+    h2 { font-size:1.1rem; margin:2rem 0 .5rem; }
+    p.sub { color:var(--muted); font-size:.85rem; margin:0 0 1rem; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      padding:1.2rem 1.3rem; margin-bottom:1rem; }
+
+    /* login form */
+    .login-wrap { max-width:26rem; margin:3rem auto; }
+    .login-wrap input { width:100%; padding:.65rem .8rem; border-radius:8px; border:1px solid var(--border);
+      background:var(--bg); color:var(--fg); font-size:1rem; margin-bottom:.7rem; }
+    .login-wrap button { width:100%; padding:.65rem .8rem; border-radius:8px; border:none;
+      background:var(--accent); color:#fff; font-weight:700; font-size:1rem; cursor:pointer; }
+    .login-err { color:var(--bad); font-size:.85rem; margin-top:.5rem; display:none; }
+
+    table { border-collapse:collapse; width:100%; font-size:.85rem; }
+    th, td { border-bottom:1px solid var(--border); padding:.45rem .5rem; text-align:left; }
+    th { color:var(--muted); font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.02em; }
+    .log-time { color:var(--muted); font-size:.78rem; white-space:nowrap; }
+    .log-opened { color:var(--accent); font-weight:600; }
+    .log-full { color:var(--bad); font-weight:600; }
+    .tag-secret, .tag-walkup { font-size:.68rem; font-weight:700; padding:.1rem .4rem; border-radius:999px;
+      display:inline-block; margin-left:.3rem; }
+    .tag-secret { color:#8b5cf6; background:color-mix(in srgb, #8b5cf6 16%, transparent); }
+    .tag-walkup { color:#0891b2; background:color-mix(in srgb, #0891b2 16%, transparent); }
+    .empty { color:var(--muted); padding:1.5rem 0; text-align:center; }
+    .speed-card { display:flex; justify-content:space-between; align-items:center; gap:1rem;
+      padding:.7rem 0; border-bottom:1px solid var(--border); }
+    .speed-card:last-child { border-bottom:none; }
+    .speed-date { font-weight:700; }
+    .speed-div { color:var(--muted); font-size:.8rem; }
+    .speed-dur { font-weight:700; color:var(--bad); font-size:.9rem; }
+
+    /* legend */
+    .legend { display:flex; gap:1rem; flex-wrap:wrap; font-size:.78rem; color:var(--muted); margin-bottom:1rem; }
+    .legend .sw { display:inline-flex; align-items:center; gap:.35rem; }
+    .legend .dot { width:10px; height:10px; border-radius:3px; }
+
+    /* calendar */
+    .cal-grid-wrap { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:1rem; }
+    .cal-month { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      padding:1rem; }
+    .cal-month h3 { margin:0 0 .6rem; font-size:.95rem; text-align:center; }
+    .cal-weekdays, .cal-days { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+    .cal-weekdays { margin-bottom:3px; }
+    .cal-weekdays div { font-size:.65rem; color:var(--muted); text-align:center; font-weight:600; }
+    .cal-cell { position:relative; aspect-ratio:1; border-radius:6px; overflow:hidden; cursor:default; }
+    .cal-cell.cal-blank { visibility:hidden; }
+    .cal-cell.has-data { cursor:pointer; }
+    .cal-half { position:absolute; left:0; right:0; }
+    .cal-daynum { position:absolute; top:2px; left:4px; font-size:.68rem; font-weight:700;
+      color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:2; }
+    .cal-secret-mark { position:absolute; top:2px; right:3px; font-size:.7rem; z-index:2;
+      text-shadow:0 1px 2px rgba(0,0,0,.6); }
+    .cal-open  { background:var(--accent); }
+    .cal-low   { background:var(--warn); }
+    .cal-full  { background:var(--bad); }
+    .cal-none  { background:var(--border); }
+    .cal-cell.no-data { background:var(--bg); border:1px dashed var(--border); }
+
+    /* tooltip */
+    #calTooltip { position:fixed; z-index:50; max-width:16rem; background:var(--card); border:1px solid var(--border);
+      border-radius:10px; box-shadow:var(--shadow); padding:.6rem .7rem; font-size:.78rem; display:none; pointer-events:none; }
+    #calTooltip .tt-date { font-weight:700; margin-bottom:.4rem; font-size:.85rem; }
+    #calTooltip .tt-div { margin-bottom:.5rem; }
+    #calTooltip .tt-div:last-child { margin-bottom:0; }
+    #calTooltip .tt-div b { font-size:.75rem; }
+    #calTooltip .tt-row { color:var(--muted); margin-top:.15rem; }
+    #calTooltip .tt-time { color:var(--fg); font-weight:600; margin-right:.3rem; }
+    #calTooltip .tt-empty { color:var(--muted); }
+  </style>
+</head>
+<body>
+  {% if not authed %}
+  <main class="wrap">
+    <div class="login-wrap card">
+      <h1>🏕️ Aravaipa Permits</h1>
+      {% if configured %}
+      <p class="sub">Enter the password to view live permit availability.</p>
+      <input type="password" id="pw" placeholder="Password" autofocus>
+      <button id="loginBtn">Unlock</button>
+      <div class="login-err" id="loginErr">Wrong password.</div>
+      {% else %}
+      <p class="sub">Not configured yet — set SWAHLE_ARAVAIPA_PASSWORD to enable this page.</p>
+      {% endif %}
+    </div>
+  </main>
+  <script>
+    const pwInput = document.getElementById('pw');
+    const btn = document.getElementById('loginBtn');
+    async function tryLogin() {
+      const r = await fetch('/aravaipa/login', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ password: pwInput.value }) });
+      if (r.ok) { location.reload(); }
+      else { document.getElementById('loginErr').style.display = 'block'; }
+    }
+    if (btn) {
+      btn.addEventListener('click', tryLogin);
+      pwInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
+    }
+  </script>
+  {% else %}
+  <header class="site">
+    <a class="brand" href="/">🐢 Swahle</a>
+    <a class="back" href="#" id="logoutBtn">Log out</a>
+  </header>
+  <main class="wrap">
+    <h1>🏕️ Aravaipa Canyon Permit Availability</h1>
+    <p class="sub">Polling recreation.gov every ~<span id="pollMin">2</span> min. Times are your browser's local time.
+      Hover (or tap) a date for its change log.</p>
+
+    <h2>Sellout speed</h2>
+    <p class="sub">Dates that opened and later sold out, with how long that took.</p>
+    <div class="card" id="speedCard"><p class="empty">No completed sellouts yet.</p></div>
+
+    <h2>Calendar</h2>
+    <div class="legend">
+      <span class="sw"><span class="dot cal-open"></span>available</span>
+      <span class="sw"><span class="dot cal-low"></span>going fast (&le;25%)</span>
+      <span class="sw"><span class="dot cal-full"></span>sold out</span>
+      <span class="sw"><span class="dot cal-none"></span>not released</span>
+      <span class="sw">🔮 secret quota active (not shown on recreation.gov's own calendar)</span>
+    </div>
+    <div class="cal-grid-wrap" id="calGrid"></div>
+
+    <h2>Recent changes</h2>
+    <p class="sub">Most recent first — every detected change in quota.</p>
+    <div class="card"><table id="logTable">
+      <thead><tr><th>Time</th><th>Date</th><th>Entrance</th><th>Change</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </main>
+  <div id="calTooltip"></div>
+
+  <script>
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August',
+      'September','October','November','December'];
+    const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+    const fmtTime = (ms) => new Date(ms).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    const fmtTimeOnly = (ms) => new Date(ms).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const fmtDateOnly = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString([], {month:'short', day:'numeric', weekday:'short'});
+    function fmtDur(ms) {
+      const s = Math.round(ms/1000);
+      if (s < 60) return s + 's';
+      const m = Math.floor(s/60);
+      if (m < 60) return `${m}m ${s%60}s`;
+      const h = Math.floor(m/60);
+      return `${h}h ${m%60}m`;
+    }
+
+    function statusColorClass(total, remaining) {
+      if (!total) return 'cal-none';
+      if (remaining <= 0) return 'cal-full';
+      if (remaining / total <= 0.25) return 'cal-low';
+      return 'cal-open';
+    }
+
+    function specialTags(e) {
+      let tags = '';
+      if (e.is_secret_quota) tags += ' <span class="tag-secret">secret quota</span>';
+      if (e.show_walkup) tags += ' <span class="tag-walkup">walk-up</span>';
+      return tags;
+    }
+
+    function changeLine(e) {
+      if ((e.prev_total == null || e.prev_total === 0) && e.total > 0) {
+        return `<span class="log-opened">OPENED — ${e.total} spots</span>${specialTags(e)}`;
+      }
+      if (e.remaining === 0 && e.prev_remaining > 0) {
+        return `<span class="log-full">SOLD OUT</span>${specialTags(e)}`;
+      }
+      const delta = (e.prev_remaining ?? e.remaining) - e.remaining;
+      const base = delta > 0 ? `${delta} booked (${e.remaining} left)` : `${e.remaining} remaining`;
+      return base + specialTags(e);
+    }
+
+    function renderLog(events) {
+      const tbody = document.querySelector('#logTable tbody');
+      if (!events.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty">No changes recorded yet.</td></tr>'; return; }
+      const rows = events.slice().reverse().map(e => `
+        <tr>
+          <td class="log-time">${fmtTime(e.observed_at)}</td>
+          <td>${fmtDateOnly(e.date)}</td>
+          <td>${e.division_name}</td>
+          <td>${changeLine(e)}</td>
+        </tr>`);
+      tbody.innerHTML = rows.join('');
+    }
+
+    function renderSpeed(events) {
+      const groups = {};
+      for (const e of events) {
+        const key = e.division_id + '|' + e.date;
+        (groups[key] ||= []).push(e);
+      }
+      const completed = [];
+      for (const key in groups) {
+        const evs = groups[key]; // chronological (oldest -> newest)
+        let openedAt = null, soldOutAt = null;
+        for (const e of evs) {
+          if (openedAt == null && (e.prev_total == null || e.prev_total === 0) && e.total > 0) openedAt = e.observed_at;
+          if (openedAt != null && soldOutAt == null && e.remaining === 0) soldOutAt = e.observed_at;
+        }
+        if (openedAt != null && soldOutAt != null && soldOutAt > openedAt) {
+          const last = evs[evs.length - 1];
+          completed.push({ date: last.date, division_name: last.division_name,
+            openedAt, soldOutAt, duration: soldOutAt - openedAt });
+        }
+      }
+      completed.sort((a, b) => b.soldOutAt - a.soldOutAt);
+      const card = document.getElementById('speedCard');
+      if (!completed.length) { card.innerHTML = '<p class="empty">No completed sellouts yet.</p>'; return; }
+      card.innerHTML = completed.map(c => `
+        <div class="speed-card">
+          <div>
+            <div class="speed-date">${fmtDateOnly(c.date)}</div>
+            <div class="speed-div">${c.division_name} · opened ${fmtTime(c.openedAt)}</div>
+          </div>
+          <div class="speed-dur">${fmtDur(c.duration)}</div>
+        </div>`).join('');
+    }
+
+    // --- calendar -------------------------------------------------------
+
+    function dayTooltipHtml(dateStr, events) {
+      const dayEvents = events.filter(e => e.date === dateStr);
+      let body;
+      if (!dayEvents.length) {
+        body = '<div class="tt-empty">No activity recorded yet.</div>';
+      } else {
+        const byDivision = {};
+        for (const e of dayEvents) (byDivision[e.division_name] ||= []).push(e);
+        body = Object.entries(byDivision).map(([name, evs]) => `
+          <div class="tt-div"><b>${name}</b>
+            ${evs.map(e => `<div class="tt-row"><span class="tt-time">${fmtTimeOnly(e.observed_at)}</span>${changeLine(e)}</div>`).join('')}
+          </div>`).join('');
+      }
+      return `<div class="tt-date">${fmtDateOnly(dateStr)}</div>${body}`;
+    }
+
+    function setupTooltip(cell, dateStr, events) {
+      const tt = document.getElementById('calTooltip');
+      const show = (x, y) => {
+        tt.innerHTML = dayTooltipHtml(dateStr, events);
+        tt.style.display = 'block';
+        const pad = 10;
+        let left = x + pad, top = y + pad;
+        const rect = tt.getBoundingClientRect();
+        if (left + rect.width > window.innerWidth - pad) left = x - rect.width - pad;
+        if (top + rect.height > window.innerHeight - pad) top = y - rect.height - pad;
+        tt.style.left = Math.max(pad, left) + 'px';
+        tt.style.top = Math.max(pad, top) + 'px';
+      };
+      cell.addEventListener('mouseenter', (e) => show(e.clientX, e.clientY));
+      cell.addEventListener('mousemove', (e) => show(e.clientX, e.clientY));
+      cell.addEventListener('mouseleave', () => { tt.style.display = 'none'; });
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (tt.style.display === 'block') { tt.style.display = 'none'; }
+        else { show(e.clientX, e.clientY); }
+      });
+    }
+
+    function buildCalendarMonth(monthStr, byDate, divisionOrder, events) {
+      const [year, month] = monthStr.split('-').map(Number);
+      const firstWeekday = new Date(year, month - 1, 1).getDay();
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      const wrap = document.createElement('div');
+      wrap.className = 'cal-month';
+      wrap.innerHTML = `<h3>${MONTH_NAMES[month-1]} ${year}</h3>
+        <div class="cal-weekdays">${WEEKDAYS.map(w => `<div>${w}</div>`).join('')}</div>
+        <div class="cal-days"></div>`;
+      const daysEl = wrap.querySelector('.cal-days');
+
+      for (let i = 0; i < firstWeekday; i++) {
+        daysEl.insertAdjacentHTML('beforeend', '<div class="cal-cell cal-blank"></div>');
+      }
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const dayData = byDate[dateStr];
+        const cell = document.createElement('div');
+        if (!dayData) {
+          cell.className = 'cal-cell no-data';
+          cell.innerHTML = `<span class="cal-daynum" style="color:var(--muted); text-shadow:none;">${day}</span>`;
+        } else {
+          cell.className = 'cal-cell has-data';
+          const n = divisionOrder.length;
+          const halves = divisionOrder.map((did, i) => {
+            const s = dayData[did];
+            const cls = s ? statusColorClass(s.total, s.remaining) : 'cal-none';
+            return `<div class="cal-half ${cls}" style="top:${(100*i/n)}%; height:${(100/n)}%;"></div>`;
+          }).join('');
+          const hasSecret = divisionOrder.some(did => dayData[did]?.is_secret_quota);
+          const mark = hasSecret ? '<span class="cal-secret-mark" title="secret quota active">🔮</span>' : '';
+          cell.innerHTML = `${halves}<span class="cal-daynum">${day}</span>${mark}`;
+          setupTooltip(cell, dateStr, events);
+        }
+        daysEl.appendChild(cell);
+      }
+      return wrap;
+    }
+
+    function renderCalendars(months, status, events) {
+      const byDate = {};
+      for (const s of status) {
+        (byDate[s.date] ||= {})[s.division_id] = s;
+      }
+      const divisionOrder = [...new Set(status.map(s => s.division_id))].sort();
+      const grid = document.getElementById('calGrid');
+      grid.innerHTML = '';
+      for (const m of months) {
+        grid.appendChild(buildCalendarMonth(m, byDate, divisionOrder, events));
+      }
+      document.addEventListener('click', () => { document.getElementById('calTooltip').style.display = 'none'; }, { once: true });
+    }
+
+    async function load() {
+      const r = await fetch('/api/aravaipa/data');
+      if (r.status === 401) { location.reload(); return; }
+      if (!r.ok) return;
+      const data = await r.json();
+      document.getElementById('pollMin').textContent = Math.round(data.poll_seconds / 60);
+      renderCalendars(data.months, data.status, data.events);
+      renderLog(data.events);
+      renderSpeed(data.events);
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await fetch('/aravaipa/logout', { method: 'POST' });
+      location.reload();
+    });
+
+    load();
+    setInterval(load, 30000);
+  </script>
+  {% endif %}
+</body>
+</html>

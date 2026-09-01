@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cassini's Day · Swahle</title>
+  <style>
+    :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec;
+      --accent:#2f7d4f; --appear:#2f7d4f; --depart:#e0a53d; --away:#94a3b8;
+      --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06); }
+    @media (prefers-color-scheme: dark) { :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4;
+      --card:#171d25; --border:#262e39; --accent:#3fae6b; --appear:#3fae6b; --depart:#e0a53d; --away:#5a6675;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35); } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+      padding:.85rem 1.25rem; background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; font-size:1.1rem; color:var(--fg); }
+    .site a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border); background:var(--card);
+      padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .wrap { max-width:760px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+    h1 { font-size:1.5rem; margin:0 0 1rem; }
+    .datebar { display:flex; align-items:center; gap:.6rem; margin-bottom:1rem; flex-wrap:wrap; }
+    .datebar button, .datebar input { border:1px solid var(--border); background:var(--card); color:var(--fg);
+      border-radius:8px; padding:.45rem .7rem; font-size:.9rem; font-weight:600; cursor:pointer; }
+    .datebar input { cursor:text; }
+    .totals { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem; }
+    .stat { background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow);
+      padding:.7rem 1rem; min-width:8rem; }
+    .stat .k { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+    .stat .v { font-size:1.15rem; font-weight:700; margin-top:.15rem; }
+    .timeline { position:relative; margin-left:.5rem; padding-left:1.5rem; border-left:2px solid var(--border); }
+    .ev { position:relative; margin-bottom:1.4rem; }
+    .ev::before { content:""; position:absolute; left:calc(-1.5rem - 6px); top:.35rem; width:11px; height:11px;
+      border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--bg); }
+    .ev.away::before { background:var(--away); }
+    .away-row { color:var(--muted); font-size:.85rem; font-style:italic; margin-bottom:1.4rem; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+      padding:.9rem 1rem; }
+    .card .times { display:flex; align-items:baseline; gap:.5rem; flex-wrap:wrap; }
+    .card .appear { font-weight:700; color:var(--appear); }
+    .card .arrow { color:var(--muted); }
+    .card .depart { font-weight:700; color:var(--depart); }
+    .card .dur { color:var(--muted); font-size:.85rem; margin-left:auto; }
+    .meta { color:var(--muted); font-size:.8rem; margin-top:.3rem; }
+    .frames { display:flex; gap:.5rem; margin-top:.7rem; }
+    .frames figure { margin:0; flex:1; min-width:0; }
+    .frames img { width:100%; height:88px; object-fit:cover; border-radius:8px; border:1px solid var(--border);
+      background:var(--bg); cursor:zoom-in; }
+    .frames figcaption { font-size:.68rem; color:var(--muted); text-align:center; margin-top:.2rem; }
+    .exit { margin-top:.7rem; border-top:1px dashed var(--border); padding-top:.6rem; }
+    .exit .btn { border:1px solid var(--border); background:var(--bg); color:var(--fg);
+      border-radius:8px; padding:.35rem .7rem; font-size:.8rem; font-weight:600; cursor:pointer; }
+    .exit .btn:disabled { opacity:.55; cursor:progress; }
+    .exit .verdict { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .dirbadge { font-weight:700; font-size:.85rem; padding:.2rem .6rem; border-radius:999px;
+      background:color-mix(in srgb, var(--depart) 18%, transparent); color:var(--depart); }
+    .conf { font-size:.75rem; color:var(--muted); }
+    .shedhint { font-size:.75rem; font-weight:700; padding:.2rem .55rem; border-radius:999px;
+      background:color-mix(in srgb, var(--accent) 18%, transparent); color:var(--accent); }
+    .unverified { font-size:.75rem; font-weight:700; padding:.2rem .55rem; border-radius:999px;
+      background:color-mix(in srgb, #e0533d 18%, transparent); color:#e0533d;
+      margin-left:.4rem; cursor:help; }
+    .exit .desc { font-size:.85rem; margin-top:.35rem; }
+    .exit .err { font-size:.8rem; color:#e0533d; margin-top:.35rem; }
+    .sighting { margin-top:.6rem; border-top:1px dashed var(--border); padding-top:.6rem; }
+    .sighting .row { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .foundbadge { font-weight:700; font-size:.85rem; padding:.2rem .6rem; border-radius:999px;
+      background:color-mix(in srgb, var(--accent) 18%, transparent); color:var(--accent); }
+    .notfoundbadge { font-weight:700; font-size:.85rem; padding:.2rem .6rem; border-radius:999px;
+      background:color-mix(in srgb, var(--muted) 20%, transparent); color:var(--muted); }
+    .scanbadge { font-weight:700; font-size:.85rem; padding:.2rem .6rem; border-radius:999px;
+      background:color-mix(in srgb, var(--depart) 18%, transparent); color:var(--depart);
+      animation:pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+    .sighting img.shedshot { width:100%; max-width:220px; border-radius:8px; margin-top:.5rem;
+      border:1px solid var(--border); cursor:zoom-in; display:block; }
+    .shedtoday { background:var(--card); border:1px solid var(--border); border-radius:14px;
+      box-shadow:var(--shadow); padding:.9rem 1rem; margin-bottom:1.25rem; }
+    .shedtoday h2 { font-size:.95rem; margin:0 0 .6rem; }
+    .shedtoday ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.5rem; }
+    .shedtoday li { display:flex; align-items:center; gap:.6rem; }
+    .shedtoday img.shedshot { width:52px; height:52px; object-fit:cover; border-radius:8px;
+      border:1px solid var(--border); cursor:zoom-in; flex-shrink:0; }
+    .shedtoday .time { font-weight:700; font-size:.85rem; }
+    .empty { color:var(--muted); padding:2.5rem 0; text-align:center; }
+    .lightbox { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center;
+      justify-content:center; z-index:50; cursor:zoom-out; }
+    .lightbox img { max-width:94vw; max-height:94vh; border-radius:10px; }
+    .note { color:var(--muted); font-size:.78rem; margin-top:2rem; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/app">🐢 Swahle</a>
+    <div style="display:flex; gap:.5rem;">
+      <a class="back" href="/app/naturalist/owlv2">🦉 OWLv2 Findings</a>
+      <a class="back" href="/app">← Home</a>
+    </div>
+  </header>
+  <main class="wrap">
+    <h1>🐢 Cassini's Day</h1>
+    <div class="datebar">
+      <button id="prev">← Prev</button>
+      <input type="date" id="date">
+      <button id="next">Next →</button>
+      <button id="today">Today</button>
+    </div>
+    <div class="totals" id="totals"></div>
+    <div id="shedToday"></div>
+    <div id="body"><p class="empty">Loading…</p></div>
+    <p class="note">Phase 0: presence sessions inferred from the hole-cam Cassini classifier.
+      “Appeared” / “left” mark when his confidence crossed the threshold; gaps under 3&nbsp;min
+      are treated as one session. Phase 3: sessions marked <span class="unverified" style="margin-left:0;">⚠ unconfirmed</span>
+      didn't get a second opinion from OWLv2 on their clearest frame -- flagged for review only,
+      not yet filtered from the timeline.</p>
+  </main>
+  <div class="lightbox" id="lightbox"><img alt="frame"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const dateEl = $('date');
+
+    const fmtClock = (ms) => new Date(ms).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    function fmtDur(s) {
+      if (s == null) return '';
+      if (s < 60) return Math.round(s) + 's';
+      const m = Math.floor(s/60), sec = Math.round(s%60);
+      if (m < 60) return sec ? `${m}m ${sec}s` : `${m}m`;
+      const h = Math.floor(m/60);
+      return `${h}h ${m%60}m`;
+    }
+    const fmtSec = fmtDur;  // alias — same "Xm Ys" shape, used for sighting lag
+
+    function stat(k, v) { return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`; }
+
+    function verifyBadge(s) {
+      const v = s.verification;
+      // Phase 1: flag-only -- OWLv2 didn't confirm a tortoise at this session's
+      // clearest frame. Doesn't mean it's fake, just worth a second look while
+      // we calibrate a real threshold (see naturalist memory).
+      if (!v || v.verified !== false) return '';
+      const score = v.score != null ? ` (owlv2 ${Math.round(v.score*100)}%)` : '';
+      return `<span class="unverified" title="OWLv2 did not confirm a tortoise in the clearest frame${score}">⚠ unconfirmed</span>`;
+    }
+
+    function frame(url, label) {
+      if (!url) return '';
+      return `<figure><img loading="lazy" src="${url}" alt="${label}" data-full="${url}">
+              <figcaption>${label}</figcaption></figure>`;
+    }
+
+    let llmReady = false;
+    const DIR_ARROW = { left:'←', right:'→', up:'↑', down:'↓',
+      'up-left':'↖', 'up-right':'↗', 'down-left':'↙', 'down-right':'↘',
+      'toward-camera':'⊙ toward', 'away-from-camera':'⊗ into hole', stayed:'•', unclear:'?' };
+
+    function exitBlock(s) {
+      const e = s.exit;
+      if (e && e.direction) {
+        const arrow = DIR_ARROW[e.direction] || '';
+        const conf = e.confidence != null ? `${Math.round(e.confidence*100)}%` : '';
+        const shed = e.toward_shed ? '<span class="shedhint">🐢→🏚 toward shed</span>' : '';
+        const notHere = e.present === false ? '<span class="conf">(no tortoise seen)</span>' : '';
+        return `<div class="exit"><div class="verdict">
+            <span class="dirbadge">exited ${arrow} ${e.direction}</span>
+            <span class="conf">conf ${conf}</span>${shed}${notHere}
+            <button class="btn" data-reanalyze>↻</button></div>
+          <div class="desc">${e.description || ''}</div></div>`;
+      }
+      const label = llmReady ? 'Analyze exit ▸' : 'Analyze exit (set API key)';
+      return `<div class="exit"><button class="btn" data-analyze ${llmReady?'':'disabled'}>${label}</button></div>`;
+    }
+
+    function sightingBlock(s) {
+      const e = s.exit, sg = s.sighting;
+      if (!e || !e.toward_shed) return '';   // only tracked for toward-shed departures
+      if (!sg) {
+        return `<div class="sighting"><div class="row"><span class="scanbadge">⏳ acquisition pending</span></div></div>`;
+      }
+      if (sg.triggered_at && !sg.completed_at) {
+        return `<div class="sighting"><div class="row"><span class="scanbadge">🐢→🏚 scanning shed-cam…</span></div></div>`;
+      }
+      if (sg.found) {
+        const conf = sg.score != null ? `${Math.round(sg.score*100)}%` : '';
+        const img = sg.image_url
+          ? `<img class="shedshot" loading="lazy" src="${sg.image_url}" alt="shed-cam sighting" data-full="${sg.image_url}">`
+          : '';
+        return `<div class="sighting"><div class="row">
+            <span class="foundbadge">🐢→🏚 found! ${fmtSec(sg.lag_seconds)} later</span>
+            <span class="conf">conf ${conf} · ${sg.frames_checked} frames checked</span>
+          </div>${img}</div>`;
+      }
+      return `<div class="sighting"><div class="row">
+          <span class="notfoundbadge">🐢→🏚 not spotted (${sg.frames_checked} frames checked)</span>
+        </div></div>`;
+    }
+
+    function renderShedToday(detections) {
+      const el = $('shedToday');
+      if (!detections || !detections.length) {
+        el.innerHTML = '<div class="shedtoday"><h2>🐢→🏚 Shed-cam sightings today</h2>'
+          + '<p class="empty" style="padding:.5rem 0;">No shed-cam sightings yet.</p></div>';
+        return;
+      }
+      const items = detections.map((d) => `<li>
+          ${d.image_url ? `<img class="shedshot" loading="lazy" src="${d.image_url}" alt="shed-cam sighting" data-full="${d.image_url}">` : ''}
+          <span class="time">${fmtClock(d.ts)}</span>
+          <span class="conf">conf ${Math.round(d.score*100)}%</span>
+        </li>`).join('');
+      el.innerHTML = `<div class="shedtoday"><h2>🐢→🏚 Shed-cam sightings today (${detections.length})</h2>
+        <ul>${items}</ul></div>`;
+      el.querySelectorAll('img[data-full]').forEach(img =>
+        img.addEventListener('click', () => {
+          const lb = $('lightbox'); lb.querySelector('img').src = img.dataset.full; lb.style.display = 'flex';
+        }));
+    }
+
+    function render(data) {
+      llmReady = !!data.llm_ready;
+      renderShedToday(data.shed_detections);
+      const t = data.totals;
+      $('totals').innerHTML = t.session_count
+        ? stat('Sessions', t.session_count)
+          + stat('Time at hole', fmtDur(t.present_seconds))
+          + stat('First seen', fmtClock(t.first_appearance))
+          + stat('Last left', fmtClock(t.last_departure))
+        : '';
+
+      const body = $('body');
+      if (!data.sessions.length) {
+        body.innerHTML = '<p class="empty">No Cassini sightings recorded this day.</p>';
+        return;
+      }
+      let html = '<div class="timeline">';
+      data.sessions.forEach((s) => {
+        if (s.away_before_s != null) {
+          html += `<div class="ev away"><div class="away-row">away for ${fmtDur(s.away_before_s)}</div></div>`;
+        }
+        html += `<div class="ev"><div class="card">
+            <div class="times">
+              <span class="appear">▲ ${fmtClock(s.start)}</span>
+              <span class="arrow">→</span>
+              <span class="depart">▼ ${fmtClock(s.end)}</span>
+              <span class="dur">at hole ${fmtDur(s.duration_s)}</span>
+              ${verifyBadge(s)}
+            </div>
+            <div class="meta">${s.frames} frames · peak ${(s.peak_prob*100).toFixed(0)}% · mean ${(s.mean_prob*100).toFixed(0)}%</div>
+            <div class="frames">
+              ${frame(s.keyframes.first, 'arrived')}
+              ${frame(s.keyframes.peak, 'clearest')}
+              ${frame(s.keyframes.last, 'left')}
+            </div>
+            ${exitBlock(s)}
+            ${sightingBlock(s)}
+          </div></div>`;
+      });
+      html += '</div>';
+      body.innerHTML = html;
+      body.querySelectorAll('img[data-full]').forEach(img =>
+        img.addEventListener('click', () => {
+          const lb = $('lightbox'); lb.querySelector('img').src = img.dataset.full; lb.style.display = 'flex';
+        }));
+      data.sessions.forEach((s, i) => {
+        const card = body.querySelectorAll('.card')[i];
+        const btn = card.querySelector('[data-analyze], [data-reanalyze]');
+        if (btn && !btn.disabled) btn.addEventListener('click', () => analyze(s, card));
+      });
+    }
+
+    async function analyze(s, card) {
+      const exit = card.querySelector('.exit');
+      const btn = exit.querySelector('button');
+      const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Analyzing…';
+      const r = await fetch('/app/api/naturalist/analyze-departure', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_end: s.end, session_start: s.start }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        btn.disabled = false; btn.textContent = original;
+        let err = exit.querySelector('.err');
+        if (!err) { err = document.createElement('div'); err.className = 'err'; exit.appendChild(err); }
+        err.textContent = data.error || `Failed (${r.status})`;
+        return;
+      }
+      s.exit = data;
+      exit.outerHTML = exitBlock(s);
+      const newBtn = card.querySelector('[data-reanalyze]');
+      if (newBtn) newBtn.addEventListener('click', () => analyze(s, card));
+    }
+
+    async function load(silent) {
+      if (!silent) $('body').innerHTML = '<p class="empty">Loading…</p>';
+      const r = await fetch('/app/api/naturalist/day?date=' + dateEl.value);
+      if (!r.ok) { if (!silent) $('body').innerHTML = '<p class="empty">Could not load this day.</p>'; return; }
+      render(await r.json());
+    }
+
+    function shift(days) {
+      const d = new Date(dateEl.value + 'T00:00:00');
+      d.setDate(d.getDate() + days);
+      dateEl.value = d.toISOString().slice(0, 10);
+      load();
+    }
+
+    $('prev').addEventListener('click', () => shift(-1));
+    $('next').addEventListener('click', () => shift(1));
+    $('today').addEventListener('click', () => { dateEl.value = new Date().toLocaleDateString('en-CA'); load(); });
+    dateEl.addEventListener('change', () => load());
+    $('lightbox').addEventListener('click', () => { $('lightbox').style.display = 'none'; });
+
+    dateEl.value = new Date().toLocaleDateString('en-CA');  // YYYY-MM-DD, local
+    load();
+    // Silent background refresh: the shed-cam scanner runs continuously through
+    // daylight hours, so poll for new sightings without a jarring full reload.
+    setInterval(() => load(true), 20000);
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

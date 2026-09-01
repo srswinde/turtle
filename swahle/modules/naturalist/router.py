@@ -20,7 +20,13 @@ from app.templating import templates
 from shared.staticfiles import serve_file
 
 from .acquisition import shed_scanner
-from .models import get_departures_for_day, get_shed_detections_for_day, get_sightings_for_day, save_departure
+from .models import (
+    get_departures_for_day,
+    get_session_checks_for_day,
+    get_shed_detections_for_day,
+    get_sightings_for_day,
+    save_departure,
+)
 from .sessionize import _day_bounds_ms, day_sessions, departure_frames
 from .vision import VisionError, analyze_departure
 
@@ -48,9 +54,11 @@ async def naturalist_day(date: str | None = Query(default=None)):
     start_ms, end_ms = _day_bounds_ms(day)
     cache = await run_in_threadpool(get_departures_for_day, start_ms, end_ms)
     sightings = await run_in_threadpool(get_sightings_for_day, start_ms, end_ms)
+    checks = await run_in_threadpool(get_session_checks_for_day, start_ms, end_ms)
     for s in data["sessions"]:
         s["exit"] = cache.get(s["end"])
         s["sighting"] = sightings.get(s["end"])
+        s["verification"] = checks.get(s["end"])  # OWLv2 2nd opinion, flag-only (Phase 1 -- see naturalist memory)
     data["shed_detections"] = await run_in_threadpool(get_shed_detections_for_day, start_ms, end_ms)
     data["llm_ready"] = bool(settings.anthropic_api_key)
     data["acquisition_enabled"] = bool(settings.naturalist_auto_analyze)

@@ -1,0 +1,3 @@
+# Vendored copies produced by scripts/prepare-build.sh — not committed.
+*
+!.gitignore

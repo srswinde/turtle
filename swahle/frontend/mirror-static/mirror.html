@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Swahle Mirror</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/mirror-static/app.css">
+</head>
+<body>
+  <!-- ambient slideshow (default state) -->
+  <div id="ambient" class="layer show">
+    <div class="slide" data-a></div>
+    <div class="slide" data-b></div>
+    <div id="clock">
+      <div id="time">--:--</div>
+      <div id="date"></div>
+    </div>
+    <div id="ambient-info">
+      <div class="chip" id="chip-weather" hidden></div>
+      <div class="chip" id="chip-solar" hidden></div>
+      <div class="chip" id="chip-cassini" hidden></div>
+    </div>
+    <div id="live-badge" hidden>LIVE · hole cam</div>
+  </div>
+
+  <!-- event takeover -->
+  <div id="takeover" class="layer">
+    <img id="takeover-img" alt="">
+    <div id="takeover-caption">
+      <div id="takeover-text"><span id="takeover-title"></span><span id="takeover-sub"></span></div>
+      <div id="takeover-actions">
+        <button id="tk-back" class="tk-btn">‹ Back</button>
+        <button id="tk-fp" class="tk-btn tk-fp" hidden>
+          <svg class="glyph-sm" viewBox="0 0 24 24" aria-hidden="true">
+            <g opacity="0.5" fill="currentColor">
+              <path d="M10.5 6.4c-4.1 0-7 3-7 6.8 0 .9.7 1.6 1.6 1.6h10.8c.9 0 1.6-.7 1.6-1.6 0-3.8-2.9-6.8-7-6.8z"/>
+              <ellipse cx="18.7" cy="12.3" rx="2.6" ry="2"/>
+              <rect x="5.3" y="13.5" width="2.7" height="3.7" rx="1.35"/>
+              <rect x="13" y="13.5" width="2.7" height="3.7" rx="1.35"/>
+              <path d="M3.6 11.8 1.2 10.9c-.5-.2-.95.4-.6.85l1 1.5z"/>
+            </g>
+            <line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+          </svg>
+          Not Cassini
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- confirmation modal -->
+  <div id="confirm-modal" hidden>
+    <div class="modal-box">
+      <p id="confirm-text"></p>
+      <div class="modal-actions">
+        <button id="confirm-cancel" class="ghost">Cancel</button>
+        <button id="confirm-ok" class="tk-btn tk-fp">Yes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- menu overlay -->
+  <div id="menu" class="layer">
+    <div class="menu-grid">
+      <button class="menu-btn" data-view="cameras"><span>📷</span>Cameras</button>
+      <button class="menu-btn" data-view="controls"><span>🎛️</span>Controls</button>
+      <button class="menu-btn" data-view="cassini"><span>🐢</span>Cassini's Day</button>
+    </div>
+    <button id="menu-close" class="ghost">Close</button>
+  </div>
+
+  <!-- sub-view container -->
+  <div id="view" class="layer">
+    <button id="view-back" class="ghost">‹ Back</button>
+    <section id="v-cameras" class="subview" hidden></section>
+    <section id="v-controls" class="subview" hidden></section>
+    <section id="v-cassini" class="subview" hidden>
+      <header class="cassini-head">
+        <button data-day="-1" class="ghost">‹</button>
+        <h2 id="cassini-date">—</h2>
+        <button data-day="1" class="ghost">›</button>
+      </header>
+      <div class="cassini-cols">
+        <div class="cassini-col"><h3>Hole cam</h3><div id="cassini-hole"></div></div>
+        <div class="cassini-col"><h3>Shed cam</h3><div id="cassini-shed"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- persistent overlays -->
+  <div id="tray"></div>
+  <div id="hotspot" aria-label="menu"></div>
+  <div id="status-dot" title="connection"></div>
+
+  <script src="/mirror-static/app.js"></script>
+</body>
+</html>

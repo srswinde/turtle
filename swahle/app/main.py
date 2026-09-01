@@ -24,16 +24,19 @@ log = logging.getLogger("swahle")
 
 def discover_modules() -> list[Module]:
     """Instantiate the enabled modules (explicit keeps ordering/failures obvious)."""
+    from modules.aravaipa.module import AravaipaModule
     from modules.cameras.module import CamerasModule
     from modules.dashboard.module import DashboardModule
     from modules.detect.module import DetectModule
     from modules.naturalist.module import NaturalistModule
+    from modules.pose.module import PoseModule
     from modules.services.module import ServicesModule
     from modules.solar.module import SolarModule
     from modules.turtle_db.module import TurtleDbModule
 
     return [TurtleDbModule(), DashboardModule(), CamerasModule(), DetectModule(),
-            NaturalistModule(), ServicesModule(), SolarModule()]
+            NaturalistModule(), PoseModule(), ServicesModule(), SolarModule(),
+            AravaipaModule()]
 
 
 def create_app() -> FastAPI:

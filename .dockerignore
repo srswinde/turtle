@@ -1,0 +1,29 @@
+# Build context is the repo root. Keep it small — only swahle/ + the turtle_db
+# package are needed by the images.
+.git
+.venv
+data/
+build/
+dist/
+*.egg-info
+.eggs/
+docs/
+smarthome/
+tests/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.zip
+*.gif
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.log
+nohup.out
+model.pth
+*.sql
+*.csv
+*.json
+# Keep the vendored ML dependency needed by Dockerfile.ml:
+!swahle/vendor/

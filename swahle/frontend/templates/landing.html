@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --fg: #1e2430; --muted: #667085;
+      --card: #ffffff; --border: #e6e8ec; --accent: #2f7d4f; --accent-fg: #fff;
+      --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f141a; --fg: #e6eaf0; --muted: #93a0b4;
+        --card: #171d25; --border: #262e39; --accent: #3fae6b; --accent-fg: #06110a;
+        --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    header { display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+    h1 { font-size: 1.9rem; margin: 0 0 .35rem; letter-spacing: -.02em; }
+    .subtitle { color: var(--muted); margin: 0; font-size: 1.02rem; }
+    .top-link { text-decoration: none; font-weight: 600; font-size: .92rem;
+      padding: .55rem 1rem; border-radius: 999px; border: 1px solid var(--border);
+      color: var(--fg); background: var(--card); white-space: nowrap; }
+    .top-link.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
+    .card { display: flex; flex-direction: column; gap: .5rem; text-decoration: none;
+      color: inherit; background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.25rem; box-shadow: var(--shadow);
+      transition: transform .12s ease, border-color .12s ease; }
+    .card:hover { transform: translateY(-3px); border-color: var(--accent); }
+    .icon { font-size: 1.9rem; line-height: 1; }
+    .card h2 { margin: 0; font-size: 1.12rem; }
+    .card p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.4; }
+    .empty { color: var(--muted); }
+    footer { margin-top: 3rem; color: var(--muted); font-size: .82rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>🐢 {{ title }}</h1>
+        <p class="subtitle">{{ subtitle }}</p>
+      </div>
+      {% if show_login %}
+        <a class="top-link primary" href="/app">🔒 Sign in</a>
+      {% else %}
+        <a class="top-link" href="/">← Public site</a>
+      {% endif %}
+    </header>
+
+    {% if items %}
+    <div class="grid">
+      {% for item in items %}
+        <a class="card" href="{{ item.href }}">
+          <span class="icon">{{ item.icon }}</span>
+          <h2>{{ item.title }}</h2>
+          <p>{{ item.description }}</p>
+        </a>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="empty">Nothing here yet.</p>
+    {% endif %}
+
+    <footer>Swahle Smart Home</footer>
+  </div>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

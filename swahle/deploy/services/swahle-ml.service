@@ -1,0 +1,15 @@
+[Unit]
+Description=Swahle ML training service (retrain worker)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=scott
+WorkingDirectory=/home/scott/git-clones/turtle_db
+Environment=PYTHONPATH=/home/scott/git-clones/turtle_db/swahle:/home/scott/git-clones/turtle_db
+ExecStart=/home/scott/anaconda3/bin/python -m uvicorn modules.detect.ml_service:app --host 0.0.0.0 --port 9200
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

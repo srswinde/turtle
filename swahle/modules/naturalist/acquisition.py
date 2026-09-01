@@ -24,6 +24,12 @@ switching between three states:
   until either found or the hole cam confirms he's back home.
 - ``tracking``— parked on the grid position where he was found, re-checking
   OWLv2 there until he's out of frame, then back to ``scanning``.
+
+Phase 3 (2026-08-23) adds ``SessionVerifier``: an OWLv2 second opinion on each
+hole-cam session, to catch VGG classifier false positives (shadow/light
+flicker on the empty hole interior) the frame/duration persistence gate in
+``sessionize.py`` doesn't. Flag-only for now -- see
+``settings.hole_scan_verify_threshold``.
 """
 from __future__ import annotations
 
@@ -39,10 +45,18 @@ from starlette.concurrency import run_in_threadpool
 
 from app.settings import settings
 from shared.db import SessionLocal
+from shared.events import TAKEOVER, bus, make_event
 from shared.models import HAS_TURTLE, hole_camera, shed_camera
 
-from .models import get_departure, get_last_shed_detection_created, save_departure, save_shed_detection
-from .sessionize import MIN_PROB, departure_frames, recent_sessions
+from .models import (
+    get_departure,
+    get_last_shed_detection_created,
+    get_session_check,
+    save_departure,
+    save_session_check,
+    save_shed_detection,
+)
+from .sessionize import MIN_PROB, departure_frames, peak_frame_path, recent_sessions
 from .vision import VisionError, analyze_departure
 
 log = logging.getLogger("swahle.naturalist.acquisition")
@@ -93,13 +107,13 @@ def _read_ptz_position() -> tuple[float | None, float | None]:
     return pan, tilt
 
 
-async def _detect_tortoise(image_bytes: bytes) -> dict | None:
+async def _detect_tortoise(image_bytes: bytes, prompts: list[str] | None = None) -> dict | None:
     if not settings.ml_service_url:
         return None
     body = {
         "image": base64.b64encode(image_bytes).decode("ascii"),
-        "prompts": settings.shed_scan_prompts,
-        "threshold": 0.05,  # broad net; shed_scan_hit_threshold decides a real hit
+        "prompts": prompts or settings.shed_scan_prompts,
+        "threshold": 0.05,  # broad net; the caller's own threshold decides a real hit
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(settings.ml_service_url.rstrip("/") + "/detect/locate",
@@ -141,6 +155,94 @@ async def _notify_sighting(ts: int) -> None:
         log.info("Sent shed-cam sighting notification for %s", when)
     except httpx.HTTPError as exc:
         log.warning("shed-cam IFTTT notify failed: %s", exc)
+
+
+def _az_clock(ts_ms: int) -> str:
+    return dt.datetime.fromtimestamp(ts_ms / 1000, tz=_ARIZONA).strftime("%-I:%M %p")
+
+
+async def _mirror_shed_sighting(ts_ms: int, path: str) -> None:
+    """Light up the smart mirror with the shed-cam catch. Best-effort: the DB
+    log cooldown in the callers is the debounce, and ``bus.publish`` swallows a
+    Redis outage (no mirror running is the normal case)."""
+    await bus.publish(make_event(
+        type="shed_sighting", kind=TAKEOVER, icon="\U0001F422",
+        title="Cassini at the shed", subtitle=_az_clock(ts_ms),
+        image={"kind": "shed", "ref": path}, ts=ts_ms,
+    ))
+
+
+def _latest_hole_presence() -> tuple[int, str] | None:
+    """Most recent hole-cam frame that counts as Cassini being home *now*."""
+    cutoff_ms = int(time.time() * 1000) - settings.mirror_hole_fresh_seconds * 1000
+    session = SessionLocal()
+    try:
+        row = (
+            session.query(hole_camera.timestamp, hole_camera.path)
+            .filter(hole_camera.timestamp >= cutoff_ms)
+            .filter(hole_camera.hasTurtle != HAS_TURTLE.NO)
+            .filter(hole_camera.prob > MIN_PROB)
+            .order_by(hole_camera.timestamp.desc())
+            .first()
+        )
+    finally:
+        session.close()
+    return (row.timestamp, row.path) if row and row.path else None
+
+
+class MirrorHolePresence:
+    """Emits a ``hole_sighting`` mirror takeover when Cassini turns up live at
+    the hole cam, debounced to one event per visit. Independent of
+    SessionVerifier/DepartureWatcher (those fire ~minutes after a session
+    *ends*; the mirror wants the arrival, promptly)."""
+
+    def __init__(self) -> None:
+        self._task: asyncio.Task | None = None
+        self._last_frame_ms = 0
+        self._last_emit = 0.0
+
+    async def start_poll(self) -> None:
+        if not settings.mirror_producers_enabled:
+            return
+        if self._task and not self._task.done():
+            return
+        self._task = asyncio.create_task(self._loop(), name="mirror-hole-presence")
+
+    async def stop_poll(self) -> None:
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+
+    async def _loop(self) -> None:
+        while True:
+            try:
+                await self._tick()
+            except Exception:  # noqa: BLE001 - keep the poller alive
+                log.exception("mirror hole-presence tick failed")
+            await asyncio.sleep(settings.mirror_hole_poll_seconds)
+
+    async def _tick(self) -> None:
+        latest = await run_in_threadpool(_latest_hole_presence)
+        if not latest:
+            return
+        ts, path = latest
+        if ts <= self._last_frame_ms:
+            return
+        self._last_frame_ms = ts
+        now = time.time()
+        if now - self._last_emit < settings.mirror_hole_cooldown_seconds:
+            return
+        self._last_emit = now
+        await bus.publish(make_event(
+            type="hole_sighting", kind=TAKEOVER, icon="\U0001F422",
+            title="Cassini at the hole", subtitle=_az_clock(ts),
+            image={"kind": "hole", "ref": path}, ts=ts,
+        ))
+        log.info("mirror: emitted hole_sighting for %s", _az_clock(ts))
 
 
 class DepartureWatcher:
@@ -313,6 +415,7 @@ class ShedScanner:
             box=hit["box"], pan=pan, tilt=tilt,
         )
         log.info("shed detection logged: score=%.3f ts=%s", hit["score"], ts)
+        await _mirror_shed_sighting(ts, path)
 
         now = time.time()
         if now - self._last_notified >= settings.notify_wait_seconds:
@@ -411,6 +514,7 @@ class ShedScanner:
             box=hit["box"], pan=pan, tilt=tilt,
         )
         log.info("yard scan: found Cassini at pan=%s tilt=%s score=%.3f", pan, tilt, hit["score"])
+        await _mirror_shed_sighting(ts_ms, str(sw.path))
 
         now = time.time()
         if now - self._last_notified >= settings.notify_wait_seconds:
@@ -431,5 +535,89 @@ class ShedScanner:
         self._track_pan = self._track_tilt = None
 
 
+class SessionVerifier:
+    """Background poller: OWLv2 second-opinion check on each newly-ended
+    hole-cam session, to catch VGG classifier false positives the persistence
+    gate alone doesn't (see sessionize.MIN_SESSION_FRAMES/MIN_SESSION_DURATION_S
+    docstring). Verification is cached in cassini_session_check and currently
+    *flag-only* -- see settings.hole_scan_verify_threshold for why filtering
+    isn't wired in yet. Same "settled session" readiness window as
+    DepartureWatcher, so a still-growing session isn't checked prematurely."""
+
+    def __init__(self) -> None:
+        self._task: asyncio.Task | None = None
+
+    async def start_poll(self) -> None:
+        if not settings.hole_scan_verify_enabled:
+            return
+        if self._task and not self._task.done():
+            return
+        self._task = asyncio.create_task(self._loop(), name="naturalist-session-verifier")
+
+    async def stop_poll(self) -> None:
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+
+    async def _loop(self) -> None:
+        while True:
+            try:
+                await self._check_once()
+            except Exception:  # noqa: BLE001 - keep the poller alive across errors
+                log.exception("session verifier tick failed")
+            await asyncio.sleep(settings.hole_scan_verify_poll_seconds)
+
+    async def _check_once(self) -> None:
+        now_ms = int(time.time() * 1000)
+        since_ms = now_ms - int(settings.naturalist_lookback_seconds * 1000)
+        sessions = await run_in_threadpool(recent_sessions, since_ms)
+        ready_cutoff_ms = settings.naturalist_departure_ready_seconds * 1000
+
+        for s in sessions:
+            if now_ms - s["end"] < ready_cutoff_ms:
+                continue  # not safely ended yet — could still be an ongoing session
+            existing = await run_in_threadpool(get_session_check, s["end"])
+            if existing is not None:
+                continue  # already verified
+            await self._verify(s)
+
+    async def _verify(self, s: dict) -> None:
+        peak = await run_in_threadpool(peak_frame_path, s["start"], s["end"])
+        if not peak:
+            log.warning("session verify: no frame found for session %s; skipping", s["end"])
+            return
+        try:
+            with open(peak, "rb") as f:
+                image_bytes = f.read()
+        except OSError as exc:
+            log.warning("session verify: frame unreadable %s: %s", peak, exc)
+            return
+
+        try:
+            hit = await _detect_tortoise(image_bytes, prompts=settings.hole_scan_prompts)
+        except (httpx.HTTPError, ValueError) as exc:
+            log.warning("OWLv2 call failed during session verify: %s", exc)
+            return  # leave unverified -- retried next tick
+
+        if not settings.ml_service_url:
+            verified = None  # unknown, not rejected -- don't flag on a misconfigured/absent service
+        else:
+            verified = int(bool(hit and hit["score"] > settings.hole_scan_verify_threshold))
+
+        await run_in_threadpool(
+            save_session_check, session_end=s["end"], session_start=s["start"],
+            verified=verified, score=(hit["score"] if hit else None),
+            checked_path=peak, box=(hit["box"] if hit else None),
+        )
+        log.info("session verify: session %s -> verified=%s score=%s",
+                 s["end"], verified, hit["score"] if hit else None)
+
+
 watcher = DepartureWatcher()
 shed_scanner = ShedScanner()
+session_verifier = SessionVerifier()
+mirror_presence = MirrorHolePresence()

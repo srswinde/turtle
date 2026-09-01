@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controls · Swahle</title>
+  <style>
+    :root {
+      --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec;
+      --accent:#2f7d4f; --on:#22c55e; --off:#cbd5e1; --bad:#e0533d;
+      --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4; --card:#171d25; --border:#262e39;
+        --accent:#3fae6b; --on:#3fae6b; --off:#3a4552; --bad:#e0664f;
+        --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35); }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center;
+      justify-content:space-between; padding:.85rem 1.25rem;
+      background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; font-size:1.1rem; }
+    .site a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border);
+      background:var(--card); padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .wrap { max-width:820px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+    .head { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+    h1 { font-size:1.5rem; margin:0; }
+    .refresh { cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--fg);
+      border-radius:999px; padding:.45rem .8rem; font-weight:600; font-size:.85rem; }
+    h2.section { font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+      margin:1.6rem 0 .6rem; }
+    .card { display:flex; align-items:center; gap:1rem; background:var(--card); border:1px solid var(--border);
+      border-radius:14px; padding:1rem 1.15rem; box-shadow:var(--shadow); margin-bottom:.7rem; }
+    .icon { font-size:1.7rem; width:2rem; text-align:center; }
+    .meta { flex:1; min-width:0; }
+    .name { font-weight:700; }
+    .status { font-size:.82rem; color:var(--muted); display:flex; align-items:center; gap:.4rem; margin-top:.15rem; }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--off); }
+    .dot.on { background:var(--on); } .dot.bad { background:var(--bad); }
+    /* toggle switch */
+    .switch { position:relative; width:52px; height:30px; flex:none; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; background:var(--off); border-radius:999px; transition:.2s; cursor:pointer; }
+    .slider::before { content:""; position:absolute; height:24px; width:24px; left:3px; top:3px;
+      background:#fff; border-radius:50%; transition:.2s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+    .switch input:checked + .slider { background:var(--on); }
+    .switch input:checked + .slider::before { transform:translateX(22px); }
+    .switch input:disabled + .slider { opacity:.5; cursor:not-allowed; }
+    .color { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; padding:0; background:none; cursor:pointer; flex:none; }
+    .color::-webkit-color-swatch-wrapper { padding:2px; }
+    .color::-webkit-color-swatch { border:none; border-radius:6px; }
+    .empty { color:var(--muted); padding:2rem 0; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/app">🐢 Swahle</a>
+    <a class="back" href="/app">← Home</a>
+  </header>
+  <main class="wrap">
+    <div class="head">
+      <h1>🎛️ Controls</h1>
+      <button class="refresh" id="refresh">↻ Refresh</button>
+    </div>
+    <div id="groups"><p class="empty">Loading devices…</p></div>
+  </main>
+
+  <script>
+    // Friendly names/icons (cosmetic; falls back to id + kind icon)
+    const META = {
+      light:    { icon:'💡', label:'Shed light' },
+      pump:     { icon:'💧', label:'Water pump' },
+      shed:     { icon:'🌈', label:'Shed WLED' },
+      bookcase: { icon:'🌈', label:'Bookcase WLED' },
+    };
+    const KIND_ICON = { shelly:'🔌', wled:'🌈' };
+    const KIND_TITLE = { shelly:'Relays', wled:'LED strips' };
+    const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+    async function api(url, opts) {
+      const r = await fetch(url, opts);
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, data };
+    }
+
+    function statusText(d) {
+      const st = d.state || {};
+      if (st.reachable === false) return { text:'unreachable', cls:'bad' };
+      if (st.on === true)  return { text: st.color ? 'On · ' + st.color : 'On',  cls:'on' };
+      if (st.on === false) return { text:'Off', cls:'' };
+      return { text:'—', cls:'' };
+    }
+
+    function makeCard(d) {
+      const meta = META[d.id] || {};
+      const icon = meta.icon || KIND_ICON[d.kind] || '🔹';
+      const label = meta.label || cap(d.id);
+      const st = statusText(d);
+      const isWled = d.kind === 'wled';
+      const on = (d.state || {}).on === true;
+      const reachable = (d.state || {}).reachable !== false;
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.id = d.id;
+      card.innerHTML =
+        `<div class="icon">${icon}</div>
+         <div class="meta"><div class="name">${label}</div>
+           <div class="status"><span class="dot ${st.cls}"></span><span class="stxt">${st.text}</span></div></div>
+         ${isWled ? `<input type="color" class="color" value="${(d.state||{}).color || '#ffffff'}" ${reachable?'':'disabled'}>` : ''}
+         <label class="switch"><input type="checkbox" ${on?'checked':''} ${reachable?'':'disabled'}><span class="slider"></span></label>`;
+
+      const sw = card.querySelector('input[type=checkbox]');
+      sw.addEventListener('change', async () => {
+        sw.disabled = true;
+        const { ok, data } = await api(`/app/api/devices/${d.id}/set`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ on: sw.checked }) });
+        applyState(card, ok ? data : { on: !sw.checked, reachable:false });
+      });
+
+      const color = card.querySelector('input[type=color]');
+      if (color) color.addEventListener('change', async () => {
+        const { ok, data } = await api(`/app/api/devices/${d.id}/set`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ color: color.value }) });
+        if (ok) applyState(card, data);
+      });
+      return card;
+    }
+
+    function applyState(card, state) {
+      const d = { id: card.dataset.id, kind: card.querySelector('input[type=color]') ? 'wled':'shelly', state };
+      const st = statusText(d);
+      card.querySelector('.dot').className = 'dot ' + st.cls;
+      card.querySelector('.stxt').textContent = st.text;
+      const sw = card.querySelector('input[type=checkbox]');
+      sw.checked = state.on === true; sw.disabled = state.reachable === false;
+      const color = card.querySelector('input[type=color]');
+      if (color && state.color) color.value = state.color;
+      if (color) color.disabled = state.reachable === false;
+    }
+
+    async function load() {
+      const groupsEl = document.getElementById('groups');
+      const { ok, data } = await api('/app/api/devices');
+      if (!ok || !Array.isArray(data)) { groupsEl.innerHTML = '<p class="empty">Failed to load devices.</p>'; return; }
+      groupsEl.innerHTML = '';
+      const byKind = {};
+      for (const d of data) (byKind[d.kind] ||= []).push(d);
+      for (const kind of Object.keys(byKind)) {
+        const h = document.createElement('h2'); h.className='section';
+        h.textContent = KIND_TITLE[kind] || cap(kind);
+        groupsEl.appendChild(h);
+        for (const d of byKind[kind]) groupsEl.appendChild(makeCard(d));
+      }
+      if (!data.length) groupsEl.innerHTML = '<p class="empty">No devices configured.</p>';
+    }
+
+    document.getElementById('refresh').addEventListener('click', load);
+    load();
+    setInterval(load, 20000);  // reflect changes made elsewhere
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

@@ -25,6 +25,16 @@ from shared.models import HAS_TURTLE, hole_camera
 
 SESSION_GAP_SECONDS = 180   # a longer gap starts a new presence session
 MIN_PROB = 0.70             # confidence for a frame to count as "Cassini present"
+# Minimum persistence for a run of high-prob frames to count as a real presence
+# session, not a lens artifact. The classifier's prob isn't finely calibrated --
+# a bug/spider on the dome scores ~0.70-0.74, indistinguishable by threshold
+# alone from a real multi-hour sighting (also ~0.73) -- so threshold tuning
+# can't separate them. What does separate them is persistence: in a 14-day
+# sample (2026-08-09), 13 of 67 "sessions" were 1-2 frames / near-zero duration
+# and all visually confirmed as lens-blob artifacts, while every real sighting
+# ran >=10 frames. See naturalist memory for the investigation.
+MIN_SESSION_FRAMES = 3
+MIN_SESSION_DURATION_S = 10.0
 
 # Sessions are bucketed by Arizona calendar day (no DST -- fixed UTC-7 year
 # round), NOT the server's local time -- swahle-web itself runs in UTC, so a
@@ -78,6 +88,8 @@ def recent_sessions(since_ms: int, *, min_prob: float = MIN_PROB,
     sessions = []
     for _, g in df.groupby("grp"):
         start_t, end_t = int(g.timestamp.iloc[0]), int(g.timestamp.iloc[-1])
+        if len(g) < MIN_SESSION_FRAMES and (end_t - start_t) / 1000 < MIN_SESSION_DURATION_S:
+            continue  # too brief to be a real sighting -- likely a lens artifact
         sessions.append({
             "start": start_t,
             "end": end_t,
@@ -122,12 +134,15 @@ def day_sessions(day: dt.date, *, min_prob: float = MIN_PROB,
 
     sessions = []
     for _, g in df.groupby("grp"):
-        peak_idx = g.prob.idxmax()
         start_t, end_t = int(g.timestamp.iloc[0]), int(g.timestamp.iloc[-1])
+        duration_s = round((end_t - start_t) / 1000, 1)
+        if len(g) < MIN_SESSION_FRAMES and duration_s < MIN_SESSION_DURATION_S:
+            continue  # too brief to be a real sighting -- likely a lens artifact
+        peak_idx = g.prob.idxmax()
         sessions.append({
             "start": start_t,
             "end": end_t,
-            "duration_s": round((end_t - start_t) / 1000, 1),
+            "duration_s": duration_s,
             "frames": int(len(g)),
             "peak_prob": round(float(g.prob.max()), 3),
             "mean_prob": round(float(g.prob.mean()), 3),
@@ -137,6 +152,9 @@ def day_sessions(day: dt.date, *, min_prob: float = MIN_PROB,
                 "last": _path_to_url(g.path.iloc[-1]),
             },
         })
+
+    if not sessions:
+        return result
 
     for i in range(1, len(sessions)):
         sessions[i]["away_before_s"] = round(
@@ -163,6 +181,24 @@ def _downscale_jpeg(raw: bytes, max_px: int) -> bytes:
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=80)
     return out.getvalue()
+
+
+def peak_frame_path(session_start: int, session_end: int) -> str | None:
+    """Disk path of the highest-prob frame in [start, end] -- the single frame
+    SessionVerifier sends to OWLv2 for a second opinion (see acquisition.py).
+    """
+    session = SessionLocal()
+    try:
+        row = (
+            session.query(hole_camera.path)
+            .filter(hole_camera.timestamp >= session_start)
+            .filter(hole_camera.timestamp <= session_end)
+            .order_by(hole_camera.prob.desc())
+            .first()
+        )
+    finally:
+        session.close()
+    return row.path if row and row.path else None
 
 
 def departure_frames(session_end: int, session_start: int, *, count: int,

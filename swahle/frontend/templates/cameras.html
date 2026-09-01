@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Cameras</title>
+  <style>
+    :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4; --card:#171d25; --border:#262e39; --accent:#3fae6b; }
+    @media (prefers-color-scheme: light) {
+      :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec; --accent:#2f7d4f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; }
+    h1 { font-size:1.5rem; margin:0; }
+    a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border);
+      background:var(--card); padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .controls { color:var(--muted); font-size:.9rem; margin-bottom:1rem; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); gap:1rem; }
+    .cam { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+    .cam h2 { margin:0; padding:.75rem 1rem; font-size:1rem; border-bottom:1px solid var(--border);
+      display:flex; justify-content:space-between; align-items:center; }
+    .cam .dot { width:9px; height:9px; border-radius:50%; background:var(--accent); }
+    .cam img { display:block; width:100%; background:#000; aspect-ratio:16/9; object-fit:contain; }
+    .cam .ts { color:var(--muted); font-size:.78rem; padding:.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>📷 Live Cameras</h1>
+      <a class="back" href="/app">← Controls</a>
+    </header>
+    <div class="controls">
+      Refresh every
+      <select id="interval">
+        <option value="1000">1s</option>
+        <option value="3000" selected>3s</option>
+        <option value="10000">10s</option>
+      </select>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+  <script>
+    const cams = {{ cameras | tojson }};
+    const grid = document.getElementById('grid');
+    const imgs = {};
+    for (const name of cams) {
+      const el = document.createElement('div');
+      el.className = 'cam';
+      el.innerHTML = `<h2><span>${name}</span><span class="dot"></span></h2>
+        <img alt="${name} snapshot"><div class="ts" data-ts></div>`;
+      grid.appendChild(el);
+      imgs[name] = { img: el.querySelector('img'), ts: el.querySelector('[data-ts]') };
+    }
+    function refresh() {
+      const t = Date.now();
+      for (const name of cams) {
+        imgs[name].img.src = `/app/api/cameras/${name}/snapshot?t=${t}`;
+        imgs[name].ts.textContent = new Date().toLocaleTimeString();
+      }
+    }
+    let timer = null;
+    function schedule() {
+      if (timer) clearInterval(timer);
+      timer = setInterval(refresh, parseInt(document.getElementById('interval').value, 10));
+    }
+    document.getElementById('interval').addEventListener('change', schedule);
+    refresh(); schedule();
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

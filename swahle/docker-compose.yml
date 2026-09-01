@@ -1,0 +1,155 @@
+# Swahle Smart Home stack.
+#   docker compose -f swahle/docker-compose.yml up -d
+#
+# Build context is the repo root (..) so images can copy both swahle/ and the
+# legacy turtle_db package. Retire the old root docker-compose.yml first — this
+# `db` service reuses the same MariaDB datadir (../data), so they must not run
+# at the same time. See DEPLOY.md.
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME}
+    volumes:
+      - ../data:/var/lib/mysql          # existing MariaDB datadir (zero migration)
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  # Pulls each camera's RTSP sub-stream and remuxes to HLS (video + audio, no
+  # re-encode) for the /app/live page. `web` reverse-proxies to this so the
+  # browser never talks to it directly (SWAHLE_MEDIAMTX_URL=http://mediamtx:8888
+  # in this compose network). NOTE: the live deployment does NOT `docker compose
+  # up` this alongside `web` -- both run as standalone `docker run` containers
+  # on the plain bridge network, reached via host.docker.internal, same as
+  # every other prod service (see swahle-web-deploy memory). Kept here for dev
+  # parity / a from-scratch compose-only setup.
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "8888:8888"
+
+  web:
+    build:
+      context: ..
+      dockerfile: swahle/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SWAHLE_DATABASE_URI: mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db/${DB_NAME}
+      SWAHLE_REDIS_HOST: redis
+      SWAHLE_ML_SERVICE_URL: http://ml:9200
+      SWAHLE_MEDIAMTX_URL: http://mediamtx:8888
+      SWAHLE_CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN}
+      SWAHLE_CF_ACCESS_AUD: ${CF_ACCESS_AUD}
+      SWAHLE_DEV_BYPASS_AUTH: "false"   # Cloudflare Access is the gate in prod
+    volumes:
+      - /mnt/nfs:/mnt/nfs                # hole-cam, shed-cam, models (RAID)
+      - /mnt/turtle:/mnt/turtle          # live-feed images (optional)
+    ports:
+      - "8001:8000"                      # local access; cloudflared uses the network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- worker-hole / worker-shed / ml: SUPERSEDED, not run in the live deployment ---
+  # These GPU services actually run as host systemd units (swahle-hole-cam.service,
+  # swahle-shed-cam.service, swahle-ml.service) against a plain anaconda Python env
+  # with direct GPU access — no NVIDIA Container Toolkit involved. See DEPLOY.md
+  # "GPU services (host systemd)". Kept here as the original containerized design in
+  # case that path is revisited (e.g. a second/non-anaconda host); do not `up` these
+  # alongside the systemd units — that runs duplicate GPU processes against the DB.
+  worker-hole:
+    build:
+      context: ..
+      dockerfile: swahle/Dockerfile.ml
+    command: python -m modules.cameras.worker --camera hole
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SWAHLE_DATABASE_URI: mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db/${DB_NAME}
+    volumes:
+      - /mnt/nfs:/mnt/nfs
+    # GPU: requires the NVIDIA Container Toolkit on the host. Comment out for CPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  worker-shed:
+    build:
+      context: ..
+      dockerfile: swahle/Dockerfile.ml
+    command: python -m modules.cameras.worker --camera shed
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SWAHLE_DATABASE_URI: mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db/${DB_NAME}
+    volumes:
+      - /mnt/nfs:/mnt/nfs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ml:
+    build:
+      context: ..
+      dockerfile: swahle/Dockerfile.ml
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SWAHLE_DATABASE_URI: mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db/${DB_NAME}
+      SWAHLE_MODEL_ROOT: /mnt/nfs/models
+      # Training pulls labeled images from the web service over the compose net.
+      SWAHLE_TRAIN_IMAGE_BASE: http://web:8000/hole-cam/static
+    volumes:
+      - /mnt/nfs:/mnt/nfs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    depends_on:
+      - web
+    volumes:
+      - ./cloudflared:/etc/cloudflared

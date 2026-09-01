@@ -1,0 +1,20 @@
+# Cloudflare Tunnel ingress. Replace <TUNNEL_ID> with your named tunnel's ID and
+# drop the tunnel credentials JSON in this directory (see DEPLOY.md).
+#
+# Public zone (/) and private zone (/app/*) are BOTH served by `web`; the
+# public/private split is enforced by the Cloudflare Access application policy
+# (Access protects /app*, leaves / open), not here.
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: swahle.org
+    service: http://web:8000
+  - hostname: power.swahle.org
+    service: http://web:8000
+  - hostname: camera.swahle.org
+    service: http://web:8000
+  # While migrating you can also route a test hostname to the same service:
+  # - hostname: new.swahle.org
+  #   service: http://web:8000
+  - service: http_status:404

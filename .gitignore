@@ -1,0 +1,47 @@
+# Python
+*.egg-info
+**/*.egg
+.eggs/**
+.en/* 
+*.pyc
+.cache
+build
+dist
+
+
+# Translations
+*.mo
+
+# Testing
+.tox
+
+# Vagrant
+.vagrant
+.bash_history
+.env/bin/easy_install-3.8
+.env/bin/easy_install
+.env/**
+.venv/**
+**/*.gif
+**/*.png
+**/*.jpg
+**/*.log
+**/*.sql
+
+
+# Config -- legacy Tornado root settings only, NOT swahle/app/settings.py
+/settings.py
+
+# MariaDB datadir (bind-mounted into the db container)
+/data/
+
+#other
+.editorconfig
+turtle_db/templates/old_base/*
+# deployment secrets
+swahle/.env
+swahle/claude_api_key.txt
+**/*_api_key.txt
+swahle/info.key
+swahle/info.txt
+swahle/info.txt.gpg

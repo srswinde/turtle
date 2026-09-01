@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cassini Retrain</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+        h1 { font-size: 1.4rem; }
+        fieldset { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 1rem; }
+        label { display: inline-block; margin-right: 1rem; }
+        input[type="number"], input[type="date"] { width: 8rem; }
+        button { padding: 0.4rem 0.9rem; border-radius: 6px; cursor: pointer; }
+        #retrain { background: #2563eb; color: #fff; border: none; }
+        #retrain:disabled { background: #94a3b8; cursor: not-allowed; }
+        .bar { height: 14px; background: #e5e7eb; border-radius: 7px; overflow: hidden; }
+        .bar > div { height: 100%; background: #22c55e; width: 0; transition: width .3s; }
+        .state { font-weight: bold; }
+        .state.running { color: #2563eb; }
+        .state.done { color: #16a34a; }
+        .state.error { color: #dc2626; }
+        pre { background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 6px;
+              max-height: 260px; overflow: auto; font-size: 12px; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { border-bottom: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; }
+        tr.active { background: #ecfdf5; }
+        .tag { background: #16a34a; color: #fff; border-radius: 4px; padding: 1px 6px; font-size: 11px; }
+    </style>
+</head>
+<body>
+    <h1>🐢 Cassini Retrain</h1>
+
+    <fieldset>
+        <legend>Start a run</legend>
+        <label>Finetunes <input type="number" id="finetunes" value="10" min="1"></label>
+        <label>Samples <input type="number" id="samples" value="100" min="1"></label>
+        <label>Since <input type="date" id="since"></label>
+        <button id="retrain">Retrain</button>
+    </fieldset>
+
+    <fieldset>
+        <legend>Status</legend>
+        <p>State: <span class="state" id="state">—</span>
+           &nbsp; last loss: <span id="loss">—</span>
+           &nbsp; last run: <span id="run">—</span></p>
+        <div class="bar"><div id="progressbar"></div></div>
+        <p id="progresstext"></p>
+        <pre id="log">No logs yet.</pre>
+    </fieldset>
+
+    <fieldset>
+        <legend>Checkpoints</legend>
+        <button id="rollback">Roll back to previous</button>
+        <table>
+            <thead><tr><th>Run</th><th>Model</th><th>Created</th><th>Active</th><th></th></tr></thead>
+            <tbody id="models"></tbody>
+        </table>
+    </fieldset>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function postJson(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}) });
+    return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
+}
+
+async function refreshStatus() {
+    const st = await (await fetch('/app/api/detect/status')).json();
+    const stateEl = $('state');
+    stateEl.textContent = st.state || '—';
+    stateEl.className = 'state ' + (st.state || '');
+    $('loss').textContent = (st.last_loss ?? '—');
+    $('run').textContent = st.run || '—';
+    const p = st.progress || { current: 0, total: 0 };
+    const pct = p.total ? Math.round(100 * p.current / p.total) : 0;
+    $('progressbar').style.width = pct + '%';
+    $('progresstext').textContent = p.total ? `${p.current} / ${p.total} finetunes` : '';
+    $('retrain').disabled = (st.state === 'running' || st.state === 'starting');
+
+    const logs = await (await fetch('/app/api/detect/logs')).json();
+    $('log').textContent = logs.log || 'No logs yet.';
+}
+
+async function refreshModels() {
+    const { models } = await (await fetch('/app/api/detect/models')).json();
+    const tbody = $('models');
+    tbody.innerHTML = '';
+    for (const m of models) {
+        const tr = document.createElement('tr');
+        if (m.active) tr.className = 'active';
+        tr.innerHTML = `<td>${m.run}</td><td>${m.model}</td><td>${m.created}</td>
+            <td>${m.active ? '<span class="tag">active</span>' : ''}</td>
+            <td>${m.active ? '' : `<button data-path="${m.path}">Activate</button>`}</td>`;
+        const btn = tr.querySelector('button');
+        if (btn) btn.addEventListener('click', async () => {
+            await postJson('/app/api/detect/activate', { path: btn.dataset.path });
+            refreshModels();
+        });
+        tbody.appendChild(tr);
+    }
+}
+
+$('retrain').addEventListener('click', async () => {
+    const body = {
+        num_finetunes: parseInt($('finetunes').value, 10),
+        num_samples: parseInt($('samples').value, 10),
+    };
+    if ($('since').value) body.since = $('since').value;
+    const res = await postJson('/app/api/detect/train', body);
+    if (!res.ok) alert(res.data.error || `Failed (${res.status})`);
+    refreshStatus();
+});
+
+$('rollback').addEventListener('click', async () => {
+    const res = await postJson('/app/api/detect/rollback', {});
+    if (!res.ok) alert(res.data.error || 'Rollback failed');
+    refreshModels();
+});
+
+refreshStatus();
+refreshModels();
+setInterval(refreshStatus, 3000);
+setInterval(refreshModels, 10000);
+</script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

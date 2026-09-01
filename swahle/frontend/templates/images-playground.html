@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sightings · Swahle</title>
+  <style>
+    :root {
+      --bg:#f6f7f9; --fg:#1e2430; --muted:#667085;
+      --card:#ffffff; --border:#e6e8ec; --accent:#2f7d4f; --accent-fg:#fff;
+      --good:#0ca30c; --shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4;
+        --card:#171d25; --border:#262e39; --accent:#3fae6b; --accent-fg:#06110a;
+        --good:#0ca30c; --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+      }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .site { position:sticky; top:0; z-index:5; display:flex; align-items:center;
+      justify-content:space-between; padding:.85rem 1.25rem;
+      background:color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+    .brand { font-weight:800; text-decoration:none; letter-spacing:-.02em; font-size:1.1rem; }
+    .site nav { display:flex; gap:.5rem; align-items:center; }
+    .site nav a { text-decoration:none; font-weight:600; font-size:.9rem; padding:.5rem .9rem; border-radius:999px; }
+    .site nav a.signin { background:var(--accent); color:var(--accent-fg); }
+    .wrap { max-width:1040px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
+
+    .daynav { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.4rem; }
+    .daynav h1 { margin:0; font-size:1.4rem; letter-spacing:-.02em; }
+    .daynav .sub { color:var(--muted); font-size:.85rem; margin-top:.15rem; }
+    .daynav .arrows { display:flex; gap:.5rem; }
+    .daynav a { text-decoration:none; color:var(--fg); border:1px solid var(--border);
+      background:var(--card); padding:.5rem .8rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .daynav a[aria-disabled="true"] { opacity:.35; pointer-events:none; }
+
+    .incidents { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:1rem; }
+    .incident { background:var(--card); border:1px solid var(--border); border-radius:14px;
+      overflow:hidden; box-shadow:var(--shadow); }
+    .img-container { position:relative; aspect-ratio:3/2; background:#000; cursor:pointer; overflow:hidden; }
+    .img-container img { position:absolute; inset:0; width:100%!important; height:100%!important;
+      object-fit:cover; display:none; }
+    .img-container .first-image { display:block; opacity:.5; transition:opacity .3s; }
+    .img-container::after { content:"▶"; position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%); font-size:1.4rem; color:#fff; background:rgba(0,0,0,.45);
+      width:2.6rem; height:2.6rem; display:flex; align-items:center; justify-content:center;
+      border-radius:50%; padding-left:.18rem; transition:opacity .2s; pointer-events:none; }
+    .img-container[data-state="playing"]::after { opacity:0; }
+    .icon { position:absolute; top:.5rem; left:50%; transform:translateX(-50%);
+      font-size:.72rem; color:#fff; background:rgba(0,0,0,.5); padding:.2rem .55rem; border-radius:999px; }
+    .action { position:absolute; top:.5rem; right:.5rem; z-index:2; width:1.9rem; height:1.9rem;
+      display:flex; align-items:center; justify-content:center; border-radius:50%;
+      background:rgba(0,0,0,.5); color:#fff; font-size:.7rem; opacity:0; transition:opacity .2s; }
+    .img-container[data-state="playing"] .action { opacity:1; cursor:pointer; }
+    .cap { display:flex; align-items:baseline; justify-content:space-between; padding:.6rem .8rem .75rem; }
+    .cap .t { font-weight:700; }
+    .cap .d { color:var(--muted); font-size:.82rem; }
+
+    .empty { text-align:center; color:var(--muted); padding:4rem 1rem; }
+    .empty .big { font-size:2.5rem; }
+  </style>
+</head>
+<body onload="main()">
+  <header class="site">
+    <a class="brand" href="/">🐢 Swahle</a>
+    <nav>
+      <a href="/gallery">← Gallery</a>
+      <a class="signin" href="/app">🔒 Sign in</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="daynav">
+      <div>
+        <h1 id="title">Sightings</h1>
+        <div class="sub" id="subtitle"></div>
+      </div>
+      <div class="arrows">
+        <a id="prev" href="#">‹ Prev</a>
+        <a id="next" href="#">Next ›</a>
+      </div>
+    </div>
+    <div class="incidents" id="images-display-container"></div>
+  </main>
+
+  <script>
+    async function main() {
+      const url = '/api/detections';
+      const dateFromUri = new URLSearchParams(window.location.search).get('date');
+      const theDate = dateFromUri ? new Date(dateFromUri) : new Date();
+      const dayString = theDate.toLocaleDateString('en-US', { weekday: 'long' });
+      document.getElementById('title').textContent = 'Sightings on ' + dayString;
+      document.getElementById('subtitle').textContent = theDate.toLocaleDateString();
+      document.title = 'Sightings on ' + dayString + ' · Swahle';
+
+      // prev/next day navigation
+      const prev = new Date(theDate.getTime() - 86400000);
+      const next = new Date(theDate.getTime() + 86400000);
+      const today = new Date();
+      document.getElementById('prev').href = '/detections?date=' + encodeURIComponent(prev.toDateString());
+      const nextEl = document.getElementById('next');
+      if (next.toDateString() > today.toDateString()) nextEl.setAttribute('aria-disabled', 'true');
+      else nextEl.href = '/detections?date=' + encodeURIComponent(next.toDateString());
+
+      const container = document.getElementById('images-display-container');
+      let responseData = {};
+      try {
+        const response = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ date: theDate.toDateString() }) });
+        if (response.ok) responseData = await response.json();
+      } catch (e) { /* fall through to empty */ }
+
+      if (!responseData || Object.keys(responseData).length === 0) {
+        container.outerHTML = '<div class="empty"><div class="big">🐢💤</div>' +
+          '<p>No sightings on ' + dayString + '.</p></div>';
+        return;
+      }
+
+      for (const grp in responseData) {
+        const id = 'detection-group-' + grp;
+        const first = new Date(responseData[grp].timestamp[0]);
+        const last = new Date(responseData[grp].timestamp[responseData[grp].timestamp.length - 1]);
+        const delta = (last - first) / 60000;
+        const pprint = first.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+        const card = document.createElement('div');
+        card.className = 'incident';
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'img-container';
+        imgContainer.id = id;
+        imgContainer.dataset.state = 'initial';
+        imgContainer.title = 'Click to play';
+
+        const action = document.createElement('div');
+        action.className = 'action';
+        action.textContent = '◼';
+        action.addEventListener('click', (e) => { e.stopPropagation(); imgContainer.dataset.state = 'stopped'; });
+
+        const firstImg = document.createElement('img');
+        firstImg.src = responseData[grp].url[0];
+        firstImg.className = 'first-image';
+
+        const icon = document.createElement('span');
+        icon.className = 'icon';
+        icon.textContent = 'loading…';
+
+        imgContainer.appendChild(action);
+        imgContainer.appendChild(firstImg);
+        imgContainer.appendChild(icon);
+
+        const cap = document.createElement('div');
+        cap.className = 'cap';
+        cap.innerHTML = '<span class="t">' + pprintEsc(pprint) + '</span><span class="d">' +
+          delta.toFixed(1) + ' min</span>';
+
+        card.appendChild(imgContainer);
+        card.appendChild(cap);
+        container.appendChild(card);
+
+      }
+
+      for (const grp in responseData) {
+        await gatherImages(responseData[grp], 'detection-group-' + grp);
+        const icon = document.querySelector('#detection-group-' + grp + ' .icon');
+        if (icon) icon.style.display = 'none';
+        const firstImg = document.querySelector('#detection-group-' + grp + ' .first-image');
+        if (firstImg) { firstImg.addEventListener('click', play); firstImg.style.opacity = 1; }
+      }
+    }
+
+    function pprintEsc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    async function gatherImages(data, displayElementId) {
+      const displayElement = document.getElementById(displayElementId);
+      if (!displayElement) return;
+      const timestamps = data.timestamp;
+      const imgDivider = parseInt(timestamps.length / 10) || 1;
+      let ii = 0;
+      for (const ts_idx in timestamps) {
+        if (ii % imgDivider > 1) { ii++; continue; }
+        ii++;
+        const ts = timestamps[ts_idx];
+        const imageUrl = data.url[ts_idx];
+        try {
+          const response = await fetch(imageUrl);
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const blob = await response.blob();
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(blob);
+          img.onload = () => URL.revokeObjectURL(img.src);
+          img.classList.add('play-image');
+          img.dataset.url = imageUrl;
+          img.dataset.timestamp = ts;
+          img.style.display = 'none';
+          displayElement.appendChild(img);
+        } catch (error) { console.error('image load failed:', error.message); }
+      }
+    }
+
+    function displayNextImage(imageIndex, displayElementId) {
+      const displayElement = document.getElementById(displayElementId);
+      if (!displayElement) return;
+      const state = displayElement.dataset.state;
+      const imgs = document.querySelectorAll('#' + displayElementId + ' .play-image');
+      if (!imgs.length) return;
+      imageIndex = imageIndex % imgs.length;
+      displayElement.dataset.imageIndex = imageIndex;
+      if (imageIndex == 0) imgs[imgs.length - 1].style.display = 'none';
+      if (imageIndex < imgs.length - 1) {
+        imgs[imageIndex + 1].style.display = 'block';
+        imgs[imageIndex].style.display = 'none';
+      }
+      if (state == 'stopped') {
+        if (imgs[imageIndex + 1]) imgs[imageIndex + 1].addEventListener('click', play);
+      } else {
+        setTimeout(displayNextImage, 200, imageIndex + 1, displayElementId);
+      }
+    }
+
+    function play(ele) {
+      const id = ele.target.parentElement.id;
+      ele.target.parentElement.dataset.state = 'playing';
+      displayNextImage(0, id);
+    }
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>

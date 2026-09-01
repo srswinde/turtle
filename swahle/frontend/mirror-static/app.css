@@ -1,0 +1,215 @@
+/* Swahle smart mirror -- 24" touch panel, viewed at ~1-1.5 m.
+   Dark by design: a mirror renders black as "off". */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #000; color: #f2f2f2;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* quiet-hours dimming is applied as `filter: brightness()` on <body> */
+body { transition: filter 1.4s ease; }
+
+.layer {
+  position: fixed; inset: 0;
+  opacity: 0; visibility: hidden;
+  transition: opacity .6s ease;
+  z-index: 1;
+}
+.layer.show { opacity: 1; visibility: visible; z-index: 2; }
+#takeover.show, #menu.show, #view.show { z-index: 5; }
+
+/* --- ambient slideshow --- */
+#ambient { background: #000; }
+.slide {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  opacity: 0; transition: opacity 1.6s ease;
+}
+.slide.on { opacity: 1; }
+/* Ken Burns pan only on stored detection stills -- the live frame stays put. */
+.slide.kb { animation: kenburns 20s ease-out forwards; }
+@keyframes kenburns {
+  from { transform: scale(1.06) translate(1%, -1%); }
+  to   { transform: scale(1.14) translate(-2%, 1.5%); }
+}
+
+#live-badge {
+  position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+  align-items: center; gap: 12px;
+  font-size: 26px; font-weight: 500; letter-spacing: 3px;
+  color: #ffe0e0; background: rgba(190,30,30,.34);
+  border: 1px solid rgba(255,90,90,.5); border-radius: 999px;
+  padding: 8px 24px; text-shadow: 0 2px 14px rgba(0,0,0,.85);
+}
+#live-badge:not([hidden]) { display: flex; }
+#live-badge::before {
+  content: ""; width: 14px; height: 14px; border-radius: 50%;
+  background: #ff4444; box-shadow: 0 0 12px #ff4444;
+  animation: livepulse 1.6s ease-in-out infinite;
+}
+@keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+#clock {
+  position: absolute; left: 60px; bottom: 48px;
+  text-shadow: 0 2px 24px rgba(0,0,0,.9);
+}
+#time { font-size: 92px; font-weight: 300; letter-spacing: 2px; }
+#date { font-size: 30px; font-weight: 300; opacity: .8; margin-top: 4px; }
+
+/* --- ambient info chips (top-right) --- */
+#ambient-info {
+  position: absolute; top: 44px; right: 48px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 14px;
+  text-shadow: 0 2px 20px rgba(0,0,0,.9);
+}
+.chip {
+  font-size: 30px; font-weight: 300; letter-spacing: .5px;
+  background: rgba(15,15,15,.42); border: 1px solid rgba(255,255,255,.09);
+  border-radius: 999px; padding: 10px 24px;
+  display: flex; align-items: center; gap: 12px; white-space: nowrap;
+}
+.chip .lo { opacity: .55; font-size: .82em; }
+.chip.stale { opacity: .4; }
+
+/* --- takeover --- */
+#takeover { background: #000; }
+#takeover-img { width: 100%; height: 100%; object-fit: contain; }
+#takeover-caption {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 40px 60px;
+  background: linear-gradient(transparent, rgba(0,0,0,.85));
+  display: flex; flex-direction: column; gap: 6px;
+}
+#takeover-text { display: flex; flex-direction: column; gap: 6px; }
+#takeover-title { font-size: 52px; font-weight: 500; }
+#takeover-sub { font-size: 30px; opacity: .75; }
+#takeover-actions { display: flex; gap: 18px; margin-top: 24px; }
+.tk-btn {
+  display: inline-flex; align-items: center; gap: 12px;
+  font-size: 28px; padding: 16px 32px; border-radius: 999px;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25);
+  color: #f2f2f2;
+}
+.tk-btn:active { background: rgba(255,255,255,.22); }
+.tk-btn.tk-fp {
+  background: rgba(190,40,40,.28); border-color: rgba(255,100,100,.5); color: #ffdede;
+}
+.tk-btn[hidden] { display: none !important; }
+.glyph-sm { width: 34px; height: 34px; }
+
+/* --- confirm modal --- */
+#confirm-modal {
+  position: fixed; inset: 0; z-index: 20;
+  background: rgba(0,0,0,.78);
+  display: flex; align-items: center; justify-content: center;
+}
+#confirm-modal[hidden] { display: none !important; }
+.modal-box {
+  background: #161616; border: 1px solid #333; border-radius: 24px;
+  padding: 44px 52px; max-width: 660px; text-align: center;
+}
+#confirm-text { font-size: 34px; font-weight: 300; line-height: 1.35; margin-bottom: 36px; }
+.modal-actions { display: flex; gap: 20px; justify-content: center; }
+
+/* --- menu --- */
+#menu { background: rgba(0,0,0,.92); display: flex;
+  flex-direction: column; align-items: center; justify-content: center; gap: 56px; }
+.menu-grid { display: flex; gap: 48px; }
+.menu-btn {
+  width: 300px; height: 300px; border-radius: 28px;
+  background: #141414; border: 1px solid #2c2c2c; color: #f2f2f2;
+  font-size: 34px; font-weight: 400;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+}
+.menu-btn span { font-size: 96px; }
+.menu-btn:active { background: #1f1f1f; }
+.ghost {
+  background: transparent; border: 1px solid #3a3a3a; color: #ddd;
+  font-size: 26px; padding: 16px 34px; border-radius: 999px;
+}
+.ghost:active { background: #1c1c1c; }
+
+/* --- sub-views --- */
+#view { background: #0a0a0a; padding: 40px 48px 48px; overflow-y: auto; }
+#view-back { position: sticky; top: 0; margin-bottom: 24px; }
+.subview { animation: fade .3s ease; }
+/* #v-cameras/#v-controls set `display` via an ID rule, which outranks the UA
+   `[hidden]{display:none}` -- make the hidden attribute authoritative so
+   switching subviews actually hides the others. */
+.subview[hidden] { display: none !important; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* cameras */
+#v-cameras { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.cam-tile { position: relative; background: #000; border-radius: 18px; overflow: hidden; }
+.cam-tile img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
+.cam-tile b { position: absolute; left: 20px; bottom: 16px; font-size: 26px;
+  text-shadow: 0 2px 12px #000; font-weight: 500; }
+
+/* controls */
+#v-controls { display: flex; flex-direction: column; gap: 22px; max-width: 900px; }
+.ctl {
+  background: #141414; border: 1px solid #262626; border-radius: 18px;
+  padding: 28px 32px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+}
+.ctl .name { font-size: 32px; flex: 1; }
+.ctl .name small { display: block; font-size: 20px; opacity: .5; margin-top: 4px; }
+.toggle {
+  width: 132px; height: 68px; border-radius: 999px; border: none;
+  background: #333; position: relative; transition: background .2s;
+}
+.toggle.on { background: #2e7d32; }
+.toggle::after {
+  content: ""; position: absolute; top: 6px; left: 6px;
+  width: 56px; height: 56px; border-radius: 50%; background: #fff;
+  transition: transform .2s;
+}
+.toggle.on::after { transform: translateX(64px); }
+.ctl.off-reach { opacity: .4; }
+.ctl.pending .toggle { opacity: .5; }
+#v-controls.loading .ctl { opacity: .5; }
+.swatches { display: flex; gap: 12px; }
+.swatch { width: 52px; height: 52px; border-radius: 12px; border: 2px solid #333; }
+.swatch:active, .swatch.sel { border-color: #fff; }
+.swatch.sel { box-shadow: 0 0 0 3px rgba(255,255,255,.28); }
+.bri { flex-basis: 100%; }
+.bri input { width: 100%; height: 40px; }
+
+/* cassini */
+.cassini-head { display: flex; align-items: center; justify-content: center; gap: 32px; margin-bottom: 24px; }
+.cassini-head h2 { font-size: 38px; font-weight: 400; }
+.cassini-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.cassini-col h3 { font-size: 24px; font-weight: 400; opacity: .6; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 2px; }
+.entry { background: #141414; border-radius: 16px; overflow: hidden; margin-bottom: 20px; }
+.entry img { width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover; }
+.entry .meta { padding: 16px 20px; font-size: 24px; }
+.entry .meta small { display: block; opacity: .55; font-size: 19px; margin-top: 4px; }
+.empty { opacity: .4; font-size: 24px; padding: 20px 0; }
+
+/* --- tray --- */
+#tray {
+  position: fixed; right: 34px; bottom: 34px; z-index: 8;
+  display: flex; flex-direction: column-reverse; gap: 20px;
+}
+.tray-icon {
+  position: relative; width: 92px; height: 92px; border-radius: 50%;
+  background: rgba(20,20,20,.82); border: 1px solid #333;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 46px;
+}
+.tray-icon .ring-svg { position: absolute; inset: -1px; transform: rotate(-90deg); }
+.tray-icon circle { fill: none; stroke-width: 4; }
+.tray-icon .track { stroke: #333; }
+.tray-icon .ring { stroke: #6ab7ff; transition: stroke-dashoffset 1s linear; }
+.tray-icon .glyph { position: relative; z-index: 1; width: 46px; height: 46px; color: #f2f2f2; }
+.tray-icon span { position: relative; z-index: 1; }
+
+/* --- hotspot + status --- */
+#hotspot { position: fixed; left: 0; top: 0; width: 120px; height: 120px; z-index: 9; }
+#status-dot {
+  position: fixed; left: 14px; bottom: 14px; width: 12px; height: 12px;
+  border-radius: 50%; background: #444; z-index: 9; transition: background .4s;
+}
+#status-dot.ok { background: #2e7d32; }
+#status-dot.bad { background: #b23b3b; }

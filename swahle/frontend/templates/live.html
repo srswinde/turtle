@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Video · Swahle</title>
+  <style>
+    :root { --bg:#0f141a; --fg:#e6eaf0; --muted:#93a0b4; --card:#171d25; --border:#262e39; --accent:#3fae6b; --bad:#e0533d; }
+    @media (prefers-color-scheme: light) {
+      :root { --bg:#f6f7f9; --fg:#1e2430; --muted:#667085; --card:#fff; --border:#e6e8ec; --accent:#2f7d4f; --bad:#c0392b; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; }
+    h1 { font-size:1.5rem; margin:0; }
+    a.back { text-decoration:none; color:var(--fg); border:1px solid var(--border);
+      background:var(--card); padding:.5rem .9rem; border-radius:999px; font-weight:600; font-size:.9rem; }
+    .note { color:var(--muted); font-size:.85rem; margin-bottom:1.25rem; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(360px,1fr)); gap:1rem; }
+    .cam { background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+    .cam h2 { margin:0; padding:.75rem 1rem; font-size:1rem; border-bottom:1px solid var(--border);
+      display:flex; justify-content:space-between; align-items:center; text-transform:capitalize; }
+    .cam .dot { width:9px; height:9px; border-radius:50%; background:var(--accent); }
+    .cam .dot.bad { background:var(--bad); }
+    .cam video { display:block; width:100%; background:#000; aspect-ratio:16/9; }
+    .cam .status { color:var(--muted); font-size:.78rem; padding:.5rem 1rem; }
+    .cam .status.err { color:var(--bad); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🎥 Live Video</h1>
+      <a class="back" href="/app">← Controls</a>
+    </header>
+    <p class="note">Live video + audio, remuxed from each camera's RTSP stream. A few seconds of
+      lag is normal. Tap play to start audio (browsers block autoplay with sound).</p>
+    <div class="grid" id="grid"></div>
+  </div>
+  <script src="/static/hls.min.js"></script>
+  <script>
+    const cams = {{ cameras | tojson }};
+    const grid = document.getElementById('grid');
+    const els = {};
+
+    for (const name of cams) {
+      const el = document.createElement('div');
+      el.className = 'cam';
+      el.innerHTML = `<h2><span>${name}</span><span class="dot" data-dot></span></h2>
+        <video data-video controls playsinline></video>
+        <div class="status" data-status>connecting…</div>`;
+      grid.appendChild(el);
+      els[name] = {
+        video: el.querySelector('[data-video]'),
+        dot: el.querySelector('[data-dot]'),
+        status: el.querySelector('[data-status]'),
+      };
+    }
+
+    function setStatus(name, text, isError) {
+      const { status, dot } = els[name];
+      status.textContent = text;
+      status.classList.toggle('err', !!isError);
+      dot.classList.toggle('bad', !!isError);
+    }
+
+    function attach(name) {
+      const { video } = els[name];
+      const src = `/app/live/${name}/index.m3u8`;
+
+      if (window.Hls && Hls.isSupported()) {
+        const hls = new Hls({ liveSyncDurationCount: 3 });
+        hls.on(Hls.Events.ERROR, (_evt, data) => {
+          if (data.fatal) {
+            setStatus(name, `stream error (${data.details})`, true);
+          }
+        });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => setStatus(name, 'live'));
+        hls.loadSource(src);
+        hls.attachMedia(video);
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari: native HLS support, no library needed.
+        video.src = src;
+        video.addEventListener('loadedmetadata', () => setStatus(name, 'live'));
+        video.addEventListener('error', () => setStatus(name, 'stream error', true));
+      } else {
+        setStatus(name, 'HLS not supported in this browser', true);
+      }
+    }
+
+    cams.forEach(attach);
+  </script>
+  <script src="/static/session-guard.js" defer></script>
+</body>
+</html>
