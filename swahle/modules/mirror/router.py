@@ -231,3 +231,9 @@ async def cassini(date: str | None = Query(default=None)):
 async def ambient():
     from .ambient import ambient_payload
     return JSONResponse(await ambient_payload())
+
+
+@router.get("/mirror/api/forecast")
+async def forecast():
+    from .forecast import five_day
+    return JSONResponse({"days": await five_day() or []})

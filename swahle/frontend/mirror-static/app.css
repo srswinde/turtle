@@ -115,7 +115,7 @@ body { transition: filter 1.4s ease; }
 /* --- menu --- */
 #menu { background: rgba(0,0,0,.92); display: flex;
   flex-direction: column; align-items: center; justify-content: center; gap: 56px; }
-.menu-grid { display: flex; gap: 48px; }
+.menu-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 48px; max-width: 700px; }
 .menu-btn {
   width: 300px; height: 300px; border-radius: 28px;
   background: #141414; border: 1px solid #2c2c2c; color: #f2f2f2;
@@ -186,6 +186,21 @@ body { transition: filter 1.4s ease; }
 .entry .meta { padding: 16px 20px; font-size: 24px; }
 .entry .meta small { display: block; opacity: .55; font-size: 19px; margin-top: 4px; }
 .empty { opacity: .4; font-size: 24px; padding: 20px 0; }
+
+/* forecast */
+#v-forecast { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
+.fc-day {
+  background: #141414; border: 1px solid #262626; border-radius: 18px;
+  padding: 28px 16px; width: 220px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.fc-name { font-size: 24px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; opacity: .85; }
+.fc-icon { font-size: 64px; }
+.fc-short { font-size: 20px; opacity: .6; min-height: 1.4em; }
+.fc-temps { font-size: 32px; display: flex; gap: 14px; }
+.fc-temps .hi { font-weight: 500; }
+.fc-temps .lo { opacity: .5; }
+.fc-precip { font-size: 20px; opacity: .6; }
 
 /* --- tray --- */
 #tray {

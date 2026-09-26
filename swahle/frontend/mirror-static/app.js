@@ -221,6 +221,7 @@
     if (name === "cameras") return renderCameras();
     if (name === "controls") return renderControls();
     if (name === "cassini") return renderCassini(null);
+    if (name === "forecast") return renderForecast();
   }
 
   /* ---------- cameras ---------- */
@@ -391,6 +392,31 @@
       base.setDate(base.getDate() + (+b.dataset.day));
       renderCassini(base.toISOString().slice(0, 10));
     }));
+
+  /* ---------- 5-day forecast ---------- */
+  let forecastCache = null;   // last-seen days, survives view switches
+  function forecastRows(days) {
+    if (!days.length) return `<p class="empty">Forecast unavailable.</p>`;
+    return days.map(d => `
+      <div class="fc-day">
+        <div class="fc-name">${d.name}</div>
+        <div class="fc-icon">${d.icon || "•"}</div>
+        <div class="fc-short">${d.short || ""}</div>
+        <div class="fc-temps">
+          <span class="hi">${d.high_f != null ? d.high_f + "°" : "--"}</span>
+          <span class="lo">${d.low_f != null ? d.low_f + "°" : "--"}</span>
+        </div>
+        ${d.precip_pct != null ? `<div class="fc-precip">💧 ${d.precip_pct}%</div>` : ""}
+      </div>`).join("");
+  }
+  async function renderForecast() {
+    const box = $("#v-forecast"); box.hidden = false;
+    if (forecastCache) box.innerHTML = forecastRows(forecastCache);   // instant paint
+    let d;
+    try { d = await (await fetch("/mirror/api/forecast")).json(); } catch { return; }
+    forecastCache = d.days || [];
+    if (current === "view" && !box.hidden) box.innerHTML = forecastRows(forecastCache);
+  }
 
   /* ---------- ambient info + quiet hours ---------- */
   let quietCfg = null;      // {active, dim, takeover_dim, wake_seconds}
