@@ -19,13 +19,17 @@
 
 logLevel: info
 
-# Only HLS is needed -- this app pulls RTSP as a client (see paths below) and
-# serves HLS out; it doesn't need to accept RTSP/RTMP/SRT/WebRTC connections
-# itself, so those listeners are disabled to shrink the exposed surface.
+# HLS is served to browsers. RTSP output is enabled too (2026-09-05) so the
+# ShedScanner analysis loop can pull scan frames from MediaMTX's republish
+# instead of opening its own connection to the capacity-constrained shed cam
+# -- MediaMTX becomes the single upstream tenant. RTSP listens on the docker
+# bridge only (no host port publish), so the exposed surface is unchanged
+# from the outside. RTMP/SRT/WebRTC stay off.
 api: false
 metrics: false
 pprof: false
-rtsp: false
+rtsp: true
+rtspAddress: :8554
 rtmp: false
 srt: false
 webrtc: false
@@ -69,3 +73,15 @@ paths:
     sourceOnDemand: true
     sourceOnDemandStartTimeout: 15s   # camera can be slow to respond under load; default 10s was tight
     sourceOnDemandCloseAfter: 30s     # avoid rapid reconnect churn on quick page refreshes
+  shed_hi:
+    # Main stream (subtype=0) for OWLv2 detection -- the substream above is
+    # fine for the live dashboard but the yard search needs the resolution to
+    # spot a tortoise at distance. Still sourceOnDemand: the ShedScanner poll
+    # (every shed_scan_poll_seconds, well under closeAfter) keeps this warm
+    # only while it's actually scanning; MediaMTX drops the camera connection
+    # ~30s after the scanner goes quiet.
+    source: rtsp://admin:admin@192.168.0.27:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 15s
+    sourceOnDemandCloseAfter: 30s

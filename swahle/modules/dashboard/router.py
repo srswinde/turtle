@@ -165,10 +165,12 @@ async def _handle_button_payload(payload: dict) -> JSONResponse:
     """
     global _last_button_pid
 
-    if "decoded" not in payload:
-        return JSONResponse({"error": "No decoded data in payload"}, status_code=503)
-    decoded = payload["decoded"]
-    if "data" not in decoded:
+    # 2026-09-05: the BLU gateway sometimes posts "decoded": null for an
+    # advert it couldn't parse (not just an absent key) -- `"data" not in
+    # None` raised TypeError and 500'd the webhook ~4x/day. Guard the value,
+    # not just its presence.
+    decoded = payload.get("decoded")
+    if not decoded or "data" not in decoded:
         return JSONResponse({"error": "No buttons decoded data"}, status_code=503)
 
     presses = []

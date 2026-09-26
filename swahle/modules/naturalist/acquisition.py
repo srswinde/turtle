@@ -107,6 +107,21 @@ def _read_ptz_position() -> tuple[float | None, float | None]:
     return pan, tilt
 
 
+def _persist_scan_frame(data: bytes, ts: dt.datetime) -> str:
+    """Write a scan frame (only ever called once a hit is confirmed) under
+    ``shed_cam_dir`` so ``save_shed_detection``/the UI have a servable path.
+    Reuses the cameras module's dir-perms helpers so the file is readable by
+    the mirror service (see camera.py:_mkdirs_readable)."""
+    from modules.cameras.camera import _chmod_readable, _mkdirs_readable
+
+    base = settings.shed_cam_dir
+    p = base / f"{ts.year}/{ts.month}/{ts.day}/mtxscan_{ts.timestamp()}.jpg"
+    _mkdirs_readable(p.parent, base)
+    p.write_bytes(data)
+    _chmod_readable(p)
+    return str(p)
+
+
 async def _detect_tortoise(image_bytes: bytes, prompts: list[str] | None = None) -> dict | None:
     if not settings.ml_service_url:
         return None
@@ -378,7 +393,30 @@ class ShedScanner:
                 log.exception("shed scanner tick failed")
                 await asyncio.sleep(settings.shed_scan_poll_seconds)
 
+    async def _grab_scan_bytes(self) -> bytes | None:
+        """One shed-cam frame for OWLv2, pulled from the MediaMTX republish so
+        MediaMTX holds the only upstream connection to the camera. Returns None
+        on any grab failure -- caller just retries on the next tick."""
+        from shared.frames import FrameGrabError, grab_jpeg
+
+        try:
+            return await grab_jpeg(settings.mediamtx_scan_path,
+                                   timeout=settings.frame_grab_timeout)
+        except FrameGrabError as exc:
+            log.warning("mediamtx scan-frame grab failed: %s", exc)
+            return None
+
     async def _tick(self, last_ts_seen: int) -> int:
+        # 2026-09-11: deliberately NOT a settings.shed_scan_frame_source branch.
+        # This is the idle poll -- it ran continuously against MediaMTX for one
+        # prototype and that alone (a permanent 1080p RTSP tenant, on top of
+        # swahle-shed-cam.service's existing snapshot.cgi polling) tipped the
+        # camera into a reboot loop within 40 minutes, unrelated to the yard
+        # search. Idle stays on the free ride: read whatever
+        # swahle-shed-cam.service already captured off disk, zero extra load
+        # on the camera. Only the yard search (scanning/tracking, below) reads
+        # the setting -- there the frame source *replaces* an existing
+        # snapshot.cgi call instead of adding a new standing connection.
         latest = await run_in_threadpool(_latest_shed_frame)
         if not latest or latest[0] == last_ts_seen:
             return last_ts_seen
@@ -458,6 +496,10 @@ class ShedScanner:
         pan, tilt = grid[self._scan_index % len(grid)]
         self._scan_index += 1
 
+        # PTZ always goes straight to the camera -- MediaMTX only republishes
+        # video, it can't relay ONVIF move commands. This is a control call,
+        # not frame polling, so it's not the connection-pressure problem the
+        # mediamtx frame source addresses.
         camera = _get_shed_camera()
         try:
             await run_in_threadpool(camera.goto_pantilt, pan, tilt)
@@ -492,14 +534,26 @@ class ShedScanner:
     async def _check_position(self, pan: float, tilt: float) -> dict | None:
         """Capture+OWLv2 the shed cam's current view; log+notify a hit. Returns
         the hit dict (or None) so callers can decide the next state."""
-        camera = _get_shed_camera()
-        sw = await run_in_threadpool(camera.take_image, "yardscan_", None, False)
-        if not sw:
-            log.warning("shed scan: could not capture frame at (%s,%s)", pan, tilt)
-            return None
+        # PTZ was moved on the camera directly just above (ONVIF can't ride
+        # RTSP); in mediamtx mode give the republish a beat to catch up to the
+        # new view before we grab, so OWLv2 doesn't score the old position.
+        if settings.shed_scan_frame_source == "mediamtx":
+            await asyncio.sleep(2.0)
+            data = await self._grab_scan_bytes()
+            if data is None:
+                log.warning("shed scan: no mediamtx frame at (%s,%s)", pan, tilt)
+                return None
+            ts_dt = dt.datetime.now()
+            sw = None
+        else:
+            sw = await run_in_threadpool(_get_shed_camera().take_image, "yardscan_", None, False)
+            if not sw:
+                log.warning("shed scan: could not capture frame at (%s,%s)", pan, tilt)
+                return None
+            data, ts_dt = sw.data, sw.timestamp
 
         try:
-            hit = await _detect_tortoise(sw.data)
+            hit = await _detect_tortoise(data)
         except (httpx.HTTPError, ValueError) as exc:
             log.warning("OWLv2 call failed during yard scan at (%s,%s): %s", pan, tilt, exc)
             return None
@@ -507,14 +561,18 @@ class ShedScanner:
         if not hit or hit["score"] <= settings.shed_scan_hit_threshold:
             return None
 
-        await run_in_threadpool(sw.save_compress, 2, 90)
-        ts_ms = int(sw.timestamp.timestamp() * 1000)
+        if sw is not None:
+            await run_in_threadpool(sw.save_compress, 2, 90)
+            path = str(sw.path)
+        else:
+            path = await run_in_threadpool(_persist_scan_frame, data, ts_dt)
+        ts_ms = int(ts_dt.timestamp() * 1000)
         await run_in_threadpool(
-            save_shed_detection, ts=ts_ms, score=hit["score"], path=str(sw.path),
+            save_shed_detection, ts=ts_ms, score=hit["score"], path=path,
             box=hit["box"], pan=pan, tilt=tilt,
         )
         log.info("yard scan: found Cassini at pan=%s tilt=%s score=%.3f", pan, tilt, hit["score"])
-        await _mirror_shed_sighting(ts_ms, str(sw.path))
+        await _mirror_shed_sighting(ts_ms, path)
 
         now = time.time()
         if now - self._last_notified >= settings.notify_wait_seconds:

@@ -35,6 +35,10 @@ dist
 # MariaDB datadir (bind-mounted into the db container)
 /data/
 
+# resumable progress state for the one-time NFS backlog sweeps -- local run
+# state, not source (see backlog-purge-*.py)
+/.backlog-purge-*.state.json
+
 #other
 .editorconfig
 turtle_db/templates/old_base/*

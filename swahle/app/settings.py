@@ -87,6 +87,28 @@ class Settings(BaseSettings):
     # naturalist memory on why that pipeline's input source is left alone.
     mediamtx_url: str = ""
 
+    # --- MediaMTX for the shed yard search only (v2, narrowed 2026-09-11) ---
+    # v1 also routed ShedScanner's idle poll through MediaMTX -- that added a
+    # *permanent* RTSP connection to the shed cam on top of
+    # swahle-shed-cam.service's existing snapshot.cgi polling, and rebooted
+    # the camera within 40 minutes (see naturalist/acquisition.py ShedScanner
+    # ._tick docstring). Idle now unconditionally reads whatever
+    # swahle-shed-cam.service already captured off disk -- zero extra camera
+    # load, this setting doesn't touch it.
+    #
+    # This setting only affects the yard search (scanning/tracking, i.e.
+    # after a resting-view hit): "camera" = legacy snapshot.cgi per grid
+    # step/track poll (the pre-2026-09 behavior); "mediamtx" = pull the same
+    # moment's frame from mediamtx_rtsp_url via ffmpeg instead -- a
+    # *replacement* for that snapshot.cgi call, not an addition, since PTZ
+    # still moves the camera directly either way (RTSP can't carry ONVIF).
+    # Empty mediamtx_rtsp_url -> "mediamtx" mode fails closed (grab errors,
+    # logged, no frame that step) rather than silently falling back.
+    mediamtx_rtsp_url: str = ""
+    frame_grab_timeout: float = 18.0           # > sourceOnDemandStartTimeout (15s) for a cold shed path
+    shed_scan_frame_source: str = "camera"
+    mediamtx_scan_path: str = "shed_hi"        # mediamtx.yml path used for detection (main stream)
+
     # --- Pump alert (gentle red pulse on the shed WLED while the pump runs) --
     pump_alert_enabled: bool = True
     pump_alert_pump: str = "pump"       # relay device id to watch
