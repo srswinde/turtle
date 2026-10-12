@@ -157,12 +157,20 @@
       const valueFmt = opts.valueFmt || (v => Math.round(v).toLocaleString());
       const tExtent = [rows[0].ts, rows[rows.length - 1].ts];
       const tSpan = Math.max(1, tExtent[1] - tExtent[0]);
-      const allVals = rows.flatMap(r => series.map(s => r[s.key] ?? 0));
-      const rawMax = Math.max(0, ...allVals);
-      const rawMin = opts.allowNegative ? Math.min(0, ...allVals) : 0;
+      const tickFmt = opts.tickValueFmt || valueFmt;
+      const allVals = rows.flatMap(r => series.map(s => r[s.key])).filter(v => v != null);
       const step = opts.step || 100;
-      const vMax = Math.ceil(rawMax / step) * step || step;
-      const vMin = rawMin < 0 ? Math.floor(rawMin / step) * step : 0;
+      let vMax, vMin;
+      if (opts.domain) {
+        // Fixed window (e.g. battery volts 11-15), widened in whole steps if data falls outside.
+        vMin = Math.min(opts.domain[0], Math.floor(Math.min(...allVals) / step) * step);
+        vMax = Math.max(opts.domain[1], Math.ceil(Math.max(...allVals) / step) * step);
+      } else {
+        const rawMax = Math.max(0, ...allVals);
+        const rawMin = opts.allowNegative ? Math.min(0, ...allVals) : 0;
+        vMax = Math.ceil(rawMax / step) * step || step;
+        vMin = rawMin < 0 ? Math.floor(rawMin / step) * step : 0;
+      }
       const vSpan = vMax - vMin || 1;
       const xScale = (t) => padL + (w - padL - padR) * (t - tExtent[0]) / tSpan;
       const yScale = (v) => padT + (h - padT - padB) * (1 - (v - vMin) / vSpan);
@@ -174,7 +182,7 @@
         const v = vMin + vSpan * i / 4;
         const y = yScale(v);
         svg += `<line class="tick-line" x1="${padL}" x2="${w - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`;
-        svg += `<text class="axis-label" x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${valueFmt(v)}</text>`;
+        svg += `<text class="axis-label" x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${tickFmt(v)}</text>`;
       }
       // x-axis time ticks (5 evenly spaced)
       for (let i = 0; i <= 4; i++) {
@@ -184,21 +192,31 @@
         svg += `<text class="axis-label" x="${x.toFixed(1)}" y="${h - padB + 15}" text-anchor="${i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}">${label}</text>`;
       }
 
-      const zeroY = yScale(0);
-      if (vMin < 0) {
+      const zeroY = yScale(opts.domain ? vMin : 0);
+      (opts.refLines || []).forEach(rl => {
+        const y = yScale(rl.v);
+        svg += `<line x1="${padL}" x2="${w - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${rl.color}" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+        svg += `<text class="axis-label" x="${padL + 4}" y="${(y - 4).toFixed(1)}" fill="${rl.color}" style="fill:${rl.color}">${rl.label}</text>`;
+      });
+      if (vMin < 0 && !opts.domain) {
         svg += `<line class="tick-line" x1="${padL}" x2="${w - padR}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}"/>`;
       }
       series.forEach(s => {
-        const pts = rows.map(r => [xScale(r.ts), yScale(r[s.key] ?? 0)]);
-        const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-        const area = line + ` L${pts[pts.length - 1][0].toFixed(1)},${zeroY.toFixed(1)}` +
-                     ` L${pts[0][0].toFixed(1)},${zeroY.toFixed(1)} Z`;
-        svg += `<path d="${area}" fill="${s.color}" opacity="0.1"/>`;
+        // Rows with no value for this series (e.g. the other device hadn't reported) break the line.
+        const pts = rows.map(r => r[s.key] == null ? null : [xScale(r.ts), yScale(r[s.key])]);
+        const line = pts.map((p, i) => p ? `${i === 0 || !pts[i - 1] ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}` : '').join(' ');
+        const valid = pts.filter(Boolean);
+        if (!valid.length) return;
+        if (!opts.noFill) {
+          const area = line + ` L${valid[valid.length - 1][0].toFixed(1)},${zeroY.toFixed(1)}` +
+                       ` L${valid[0][0].toFixed(1)},${zeroY.toFixed(1)} Z`;
+          svg += `<path d="${area}" fill="${s.color}" opacity="0.1"/>`;
+        }
         svg += `<path d="${line}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-        const last = pts[pts.length - 1];
+        const last = valid[valid.length - 1];
         svg += `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="5" fill="${s.color}" stroke="var(--card)" stroke-width="2"/>`;
-        const lastVal = rows[rows.length - 1][s.key];
-        svg += `<text class="end-label" x="${(last[0] + 6).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" fill="var(--fg)">${valueFmt(lastVal ?? 0)}${opts.unit || ''}</text>`;
+        const lastRow = [...rows].reverse().find(r => r[s.key] != null);
+        svg += `<text class="end-label" x="${(last[0] + 6).toFixed(1)}" y="${(last[1] + 4).toFixed(1)}" fill="var(--fg)">${valueFmt(lastRow[s.key])}${opts.unit || ''}</text>`;
       });
 
       svg += `<line class="crosshair-line" id="crosshair" x1="0" x2="0" y1="${padT}" y2="${h - padB}"/>`;
@@ -315,13 +333,13 @@
     }
 
     async function loadHistory(hours) {
-      if (!haveSolar) return;
+      if (!haveSolar) return null;
       const r = await fetch(`/app/api/solar/history?hours=${hours}`);
       const d = await r.json();
       const chartCard = $('chart-card');
       if (!d.readings || d.readings.length < 2) {
         chartCard.innerHTML = `<p class="empty">Not enough data yet for this range.</p>`;
-        return;
+        return null;
       }
       const series = [
         { name: 'Solar input (PV)', color: cssVar('--series-pv'), key: 'pv_power' },
@@ -335,16 +353,17 @@
       chartCard.innerHTML = legendHtml(series) + meta.svg + tableHtml(d.readings);
       wireHover(chartCard, meta, d.readings, series, fmtW);
       wireTableToggle('table-toggle', 'readings-table');
+      return d;
     }
 
     async function loadShuntHistory(hours) {
-      if (!haveShunt) return;
+      if (!haveShunt) return null;
       const r = await fetch(`/app/api/solar/shunt/history?hours=${hours}`);
       const d = await r.json();
       const chartCard = $('shunt-chart-card');
       if (!d.readings || d.readings.length < 2) {
         chartCard.innerHTML = `<p class="empty">Not enough data yet for this range.</p>`;
-        return;
+        return null;
       }
       const series = [
         { name: 'Net current', color: cssVar('--series-current'), key: 'current' },
@@ -360,13 +379,55 @@
       chartCard.innerHTML = meta.svg + shuntTableHtml(d.readings);
       wireHover(chartCard, meta, d.readings, series, fmtA);
       wireTableToggle('shunt-table-toggle', 'shunt-readings-table');
+      return d;
+    }
+
+    // Battery voltage from both devices on one time axis. Each shunt row picks up the nearest
+    // MPPT reading within 30 s; the two should agree, so a gap between the lines flags a wiring
+    // or connection problem (the MPPT not actually seeing the battery).
+    function mergeVoltage(shuntRows, mpptRows) {
+      const m = mpptRows || [];
+      const merged = (shuntRows || []).map(r => ({ ts: r.ts, shunt_v: r.voltage, mppt_v: null }));
+      if (!m.length) return merged;
+      let j = 0;
+      merged.forEach(row => {
+        while (j < m.length - 1 && Math.abs(m[j + 1].ts - row.ts) <= Math.abs(m[j].ts - row.ts)) j++;
+        if (Math.abs(m[j].ts - row.ts) <= 30000) row.mppt_v = m[j].battery_voltage;
+      });
+      return merged;
+    }
+
+    function renderVoltage(hours, solarData, shuntData) {
+      const card = $('voltage-chart-card');
+      if (!card) return;
+      const rows = mergeVoltage(shuntData && shuntData.readings, solarData && solarData.readings);
+      if (rows.length < 2 && solarData && solarData.readings && solarData.readings.length >= 2) {
+        // No shunt: fall back to the MPPT's own battery voltage.
+        solarData.readings.forEach(r => rows.push({ ts: r.ts, shunt_v: null, mppt_v: r.battery_voltage }));
+      }
+      if (rows.length < 2) {
+        card.innerHTML = `<p class="empty">Not enough data yet for this range.</p>`;
+        return;
+      }
+      const series = [];
+      if (shuntData) series.push({ name: 'Battery voltage (shunt)', color: cssVar('--series-batt'), key: 'shunt_v' });
+      if (rows.some(r => r.mppt_v != null)) series.push({ name: 'Charger sees (MPPT)', color: cssVar('--series-pv'), key: 'mppt_v' });
+      const meta = lineChart(rows, series, {
+        ariaLabel: 'Battery voltage over time from the shunt and the solar charger',
+        tickFmt: hours <= 24 ? {hour:'2-digit', minute:'2-digit'} : {month:'short', day:'numeric'},
+        unit: 'V', step: 1, domain: [11, 15], noFill: true,
+        valueFmt: (v) => v.toFixed(2), tickValueFmt: (v) => v.toFixed(0),
+        refLines: [{ v: 12.0, color: cssVar('--bad'), label: '12.0 V: LiFePO4 knee' }],
+      });
+      card.innerHTML = legendHtml(series) + meta.svg;
+      wireHover(card, meta, rows, series, fmtV);
     }
 
     function loadAllHistory(hours) {
       currentHours = hours;
       document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', +b.dataset.hours === hours));
-      loadHistory(hours);
-      loadShuntHistory(hours);
+      Promise.all([loadHistory(hours), loadShuntHistory(hours)])
+        .then(([solarData, shuntData]) => renderVoltage(hours, solarData, shuntData));
     }
 
     async function load() {
@@ -414,6 +475,7 @@
         <button class="range-btn" data-hours="168">7d</button>
       </div>`;
 
+      html += `<div class="card" id="voltage-chart-card"><p class="empty">Loading chart…</p></div>`;
       if (haveSolar) {
         html += `<div class="card" id="chart-card"><p class="empty">Loading chart…</p></div>`;
       }
@@ -421,6 +483,10 @@
         html += `<div class="card" id="shunt-chart-card"><p class="empty">Loading chart…</p></div>`;
       }
 
+      html += `<p class="note">Battery voltage is plotted from the shunt and from the charger's own
+        reading. They should track within a few tenths of a volt; a wider gap means one of them is not
+        connected to the battery the way you expect. On LiFePO4 the voltage is nearly flat until the
+        knee near 12 V, so a fast drop through it means the battery is almost empty.</p>`;
       if (haveSolar) {
         html += `<p class="note">Battery charging power is voltage × current at the controller's battery
           terminal. This model has no load output, so "waste" is inferred: panel power the charger
