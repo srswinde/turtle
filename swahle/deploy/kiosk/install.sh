@@ -10,11 +10,16 @@ set -eu
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$HOME/.local/bin/swahle-mirror-kiosk.sh"
+POWER_BIN="$HOME/.local/bin/swahle-mirror-display-power.sh"
 
 mkdir -p "$(dirname "$BIN")"
 cp "$DIR/launch-kiosk.sh" "$BIN"
 chmod +x "$BIN"
 echo "installed $BIN"
+
+cp "$DIR/display-power.sh" "$POWER_BIN"
+chmod +x "$POWER_BIN"
+echo "installed $POWER_BIN"
 
 # --- labwc (current RPi default) -------------------------------------------
 # labwc runs the *user* autostart INSTEAD OF the system one, so seed it from
@@ -35,17 +40,32 @@ else
   printf '%s &\n' "$BIN" >> "$LABWC"
   echo "added kiosk to $LABWC"
 fi
+if grep -q "swahle-mirror-display-power" "$LABWC"; then
+  echo "labwc autostart already has the display-power line"
+else
+  printf '%s &\n' "$POWER_BIN" >> "$LABWC"
+  echo "added display-power to $LABWC"
+fi
 
 # --- Wayfire (fallback, if they switch back) ------------------------------
 WAYFIRE="$HOME/.config/wayfire.ini"
 if [ -f "$WAYFIRE" ]; then
-  if grep -q "swahle_mirror" "$WAYFIRE"; then
+  if grep -q "swahle_mirror " "$WAYFIRE"; then
     echo "wayfire.ini already has the kiosk line"
   elif grep -q "^\[autostart\]" "$WAYFIRE"; then
     sed -i "/^\[autostart\]/a swahle_mirror = $BIN" "$WAYFIRE"
     echo "added kiosk to existing [autostart] in wayfire.ini"
   else
     printf '\n[autostart]\nswahle_mirror = %s\n' "$BIN" >> "$WAYFIRE"
+    echo "added [autostart] section to wayfire.ini"
+  fi
+  if grep -q "swahle_mirror_display_power" "$WAYFIRE"; then
+    echo "wayfire.ini already has the display-power line"
+  elif grep -q "^\[autostart\]" "$WAYFIRE"; then
+    sed -i "/^\[autostart\]/a swahle_mirror_display_power = $POWER_BIN" "$WAYFIRE"
+    echo "added display-power to existing [autostart] in wayfire.ini"
+  else
+    printf '\n[autostart]\nswahle_mirror_display_power = %s\n' "$POWER_BIN" >> "$WAYFIRE"
     echo "added [autostart] section to wayfire.ini"
   fi
 fi

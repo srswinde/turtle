@@ -204,9 +204,19 @@
     }
   });
   $("#menu-close").addEventListener("click", () => show("ambient"));
-  document.querySelectorAll(".menu-btn").forEach(b =>
+  document.querySelectorAll(".menu-btn[data-view]").forEach(b =>
     b.addEventListener("click", () => openView(b.dataset.view)));
   $("#view-back").addEventListener("click", () => show("ambient"));
+
+  // Manual screen-off: tell the backend, then drop straight to ambient so
+  // the panel (once display-power.sh on the Pi actually cuts the backlight)
+  // comes back to the clock/slideshow rather than a leftover menu. Any touch
+  // on the dark panel wakes it back on -- that's handled by display-power.sh
+  // watching the touch overlay directly, not by this page.
+  $("#menu-screen-off").addEventListener("click", () => {
+    api("/mirror/api/display/off").catch(() => {});
+    show("ambient");
+  });
 
   function bumpViewIdle() {
     clearTimeout(viewIdle);
@@ -395,10 +405,17 @@
 
   /* ---------- 5-day forecast ---------- */
   let forecastCache = null;   // last-seen days, survives view switches
+  let forecastSelected = 0;   // index into forecastCache -- which tile's text shows below
+  function forecastDetail(d) {
+    if (!d) return "";
+    return (d.detail ? `<div class="fc-detail-section"><h4>${d.name}</h4><p>${d.detail}</p></div>` : "") +
+      (d.night_detail && d.night_detail !== d.detail
+        ? `<div class="fc-detail-section"><h4>${d.night_name || "Night"}</h4><p>${d.night_detail}</p></div>` : "");
+  }
   function forecastRows(days) {
     if (!days.length) return `<p class="empty">Forecast unavailable.</p>`;
-    return days.map(d => `
-      <div class="fc-day">
+    const tiles = days.map((d, i) => `
+      <div class="fc-day${i === forecastSelected ? " selected" : ""}" data-i="${i}">
         <div class="fc-name">${d.name}</div>
         <div class="fc-icon">${d.icon || "•"}</div>
         <div class="fc-short">${d.short || ""}</div>
@@ -408,14 +425,24 @@
         </div>
         ${d.precip_pct != null ? `<div class="fc-precip">💧 ${d.precip_pct}%</div>` : ""}
       </div>`).join("");
+    return `<div class="fc-row">${tiles}</div><div id="fc-detail">${forecastDetail(days[forecastSelected])}</div>`;
+  }
+  function paintForecast(days) {
+    const box = $("#v-forecast");
+    box.innerHTML = forecastRows(days);
+    box.querySelectorAll(".fc-day").forEach(el => el.addEventListener("click", () => {
+      forecastSelected = +el.dataset.i;
+      paintForecast(days);
+    }));
   }
   async function renderForecast() {
     const box = $("#v-forecast"); box.hidden = false;
-    if (forecastCache) box.innerHTML = forecastRows(forecastCache);   // instant paint
+    forecastSelected = 0;   // today, every time the view is (re)opened
+    if (forecastCache) paintForecast(forecastCache);   // instant paint
     let d;
     try { d = await (await fetch("/mirror/api/forecast")).json(); } catch { return; }
     forecastCache = d.days || [];
-    if (current === "view" && !box.hidden) box.innerHTML = forecastRows(forecastCache);
+    if (current === "view" && !box.hidden) paintForecast(forecastCache);
   }
 
   /* ---------- ambient info + quiet hours ---------- */

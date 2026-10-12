@@ -8,6 +8,10 @@ Assembled into one payload (`/mirror/api/ambient`, polled ~60s):
 - **quiet**    -- whether we're in quiet hours and how far to dim (the client
                   applies `filter: brightness()`), so the mirror goes dark at
                   night but still lights up for a takeover.
+- **screen_off** -- the menu's manual "Screen Off" button state (see
+                  modules/mirror/state.py); the Pi's display-power.sh polls
+                  both this and `quiet` to decide whether to power the panel
+                  off entirely.
 """
 from __future__ import annotations
 
@@ -160,6 +164,8 @@ def quiet_status(wx: dict | None) -> dict:
 async def ambient_payload() -> dict:
     from starlette.concurrency import run_in_threadpool
 
+    from .state import state
+
     wx = await weather()
     cassini = await run_in_threadpool(cassini_status)
     solar = await run_in_threadpool(solar_status)
@@ -168,6 +174,7 @@ async def ambient_payload() -> dict:
         "solar": solar,
         "weather": wx,
         "quiet": quiet_status(wx),
+        "screen_off": state.screen_off,
         "poll_seconds": settings.mirror_ambient_poll_seconds,
         "server_time": int(time.time() * 1000),
     }

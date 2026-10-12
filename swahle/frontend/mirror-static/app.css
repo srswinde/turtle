@@ -187,13 +187,19 @@ body { transition: filter 1.4s ease; }
 .entry .meta small { display: block; opacity: .55; font-size: 19px; margin-top: 4px; }
 .empty { opacity: .4; font-size: 24px; padding: 20px 0; }
 
-/* forecast */
-#v-forecast { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
+/* forecast -- panel is a fixed 1920x1080 (checked via wlr-randr on the pi), so
+   this is sized against that directly rather than left to wrap/scroll.
+   5 tiles at 220px + 24px gaps = 1196px, well inside #view's ~1824px content
+   width, so the row never needs to wrap. */
+#v-forecast { display: flex; flex-direction: column; align-items: center; }
+.fc-row { display: flex; gap: 24px; justify-content: center; }
 .fc-day {
-  background: #141414; border: 1px solid #262626; border-radius: 18px;
+  background: #141414; border: 2px solid #262626; border-radius: 18px;
   padding: 28px 16px; width: 220px; text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
+.fc-day:active { background: #1f1f1f; }
+.fc-day.selected { border-color: #6ab7ff; background: #172431; }
 .fc-name { font-size: 24px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; opacity: .85; }
 .fc-icon { font-size: 64px; }
 .fc-short { font-size: 20px; opacity: .6; min-height: 1.4em; }
@@ -201,6 +207,15 @@ body { transition: filter 1.4s ease; }
 .fc-temps .hi { font-weight: 500; }
 .fc-temps .lo { opacity: .5; }
 .fc-precip { font-size: 20px; opacity: .6; }
+
+/* selected day's full weather.gov text, below the row */
+#fc-detail { margin-top: 32px; max-width: 1000px; }
+.fc-detail-section { margin-bottom: 20px; }
+.fc-detail-section h4 {
+  font-size: 20px; font-weight: 400; text-transform: uppercase; letter-spacing: 2px;
+  opacity: .5; margin-bottom: 8px;
+}
+.fc-detail-section p { font-size: 28px; font-weight: 300; line-height: 1.4; }
 
 /* --- tray --- */
 #tray {

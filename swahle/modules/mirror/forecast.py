@@ -57,9 +57,13 @@ async def _forecast_url() -> str:
 
 
 async def five_day() -> list[dict] | None:
-    """Daily ``[{date, name, icon, short, high_f, low_f, precip_pct, wind}]``,
-    soonest first. Cached 30 min; serves stale data rather than nothing on a
-    transient failure (matches ``ambient.weather``'s behavior)."""
+    """Daily ``[{date, name, icon, short, high_f, low_f, precip_pct, wind,
+    detail, night_name, night_detail}]``, soonest first. ``detail``/
+    ``night_detail`` are NWS's full sentence per period (e.g. "Sunny, with a
+    high near 97. South southwest wind 2 to 6 mph.") -- the tile only shows
+    the short version, but a tap can show these. Cached 30 min; serves stale
+    data rather than nothing on a transient failure (matches
+    ``ambient.weather``'s behavior)."""
     now = time.time()
     if _forecast_cache["data"] and now - _forecast_cache["at"] < 1800:
         return _forecast_cache["data"]
@@ -83,7 +87,8 @@ async def five_day() -> list[dict] | None:
             day = {
                 "date": date, "name": p["name"], "icon": "", "short": "",
                 "high_f": None, "low_f": None, "precip_pct": None,
-                "wind": p.get("windSpeed"),
+                "wind": p.get("windSpeed"), "detail": "",
+                "night_name": "", "night_detail": "",
             }
             by_date[date] = day
             days.append(day)
@@ -92,6 +97,8 @@ async def five_day() -> list[dict] | None:
             day["high_f"] = p["temperature"]
         else:
             day["low_f"] = p["temperature"]
+            day["night_name"] = p["name"]
+            day["night_detail"] = p.get("detailedForecast") or ""
         # The daytime period sets the headline name/icon/text for the day;
         # if the first day only has a night period (forecast fetched in the
         # evening, e.g. just "Tonight"), fall back to it.
@@ -99,6 +106,7 @@ async def five_day() -> list[dict] | None:
             day["name"] = p["name"]
             day["icon"] = _icon_for(p["shortForecast"])
             day["short"] = p["shortForecast"]
+            day["detail"] = p.get("detailedForecast") or ""
             if pop is not None:
                 day["precip_pct"] = pop
 

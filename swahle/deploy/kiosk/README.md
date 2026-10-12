@@ -45,12 +45,40 @@ http://192.168.0.164:8800/mirror/enroll?token=<the token>
 
 That drops a 10-year signed cookie; every other route then requires it.
 
-## Screen blanking
+## Screen blanking / manual "Screen Off"
 
-Not observed as an issue during setup (the current manually-launched Chromium
-ran for 2+ days without blanking), so nothing was changed. If the panel does
-start sleeping: `wlopm` and `wlr-randr` are both already on this image and can
-force outputs on, or the idle timeout can be tuned in `wayfire.ini`.
+Chromium itself never blanks -- the panel staying lit all night (as a dim
+black glow from `app.css`'s quiet-hours `filter: brightness()`) and the
+menu's "Screen Off" button are both handled by `display-power.sh`, installed
+alongside the kiosk by `install.sh` as its own autostart line
+(`swahle-mirror-display-power.sh`). It polls the same `/mirror/api/ambient`
+payload the web page does (`quiet.active` for the nightly schedule,
+`screen_off` for the menu button) and, while either is set, talks directly to
+the monitor over **DDC/CI** (`ddcutil`, `apt install ddcutil`) to put it in
+its own power-off state -- VCP feature `0xD6` ("power mode"), the Pi exposes
+this monitor's DDC bus as `/dev/i2c-20` (`ddcutil detect`), and `scott` is
+already in the `i2c` group so no sudo is needed.
+
+That's a command to the monitor's firmware, independent of the HDMI signal --
+**deliberately not** `wlopm` / `wlr-randr --off` (the obvious first choice):
+those ask the *compositor* to power the output off, but labwc here was found
+to re-enable it on its own within ~5-20s regardless (confirmed by watching
+`wlr-randr`'s own reported state flip back with nothing else touching it),
+so the panel never actually stayed dark. DDC/CI holds regardless of what
+Chromium keeps rendering -- confirmed stable 40+s in testing.
+
+A touch on the overlay wakes the panel the same way the page's own
+wake-on-touch does (watches the touch device directly via
+`libinput debug-events` -- a separate USB part, unaffected by the monitor's
+power state), then: during quiet hours, lets it go back off after
+`mirror_quiet_wake_seconds` of no further touch; for a manual Screen Off, it
+clears the flag (`POST /mirror/api/display/on`) and stays on.
+
+If the DDC display index or touch device ever changes (different panel,
+different by-id path), override via `SWAHLE_MIRROR_DDC_DISPLAY` /
+`SWAHLE_MIRROR_TOUCH_DEVICE` env vars on the autostart line, same pattern as
+`SWAHLE_MIRROR_URL` above. Logs go to the same place as the kiosk's -- run it
+by hand in a terminal to see its output live.
 
 ## Tweaks
 

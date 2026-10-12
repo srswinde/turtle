@@ -29,6 +29,13 @@ class MirrorState:
         self.active: dict[str, Any] | None = None      # {"event": {...}, "expires": ms}
         self.icons: dict[str, dict[str, Any]] = {}     # type -> {"event": {...}, "created": ms}
         self.last_event: dict[str, Any] | None = None  # most recent, for client animation
+        # Manual "Screen Off" menu button -- independent of the quiet-hours
+        # schedule. The Pi's display-power.sh daemon (not this process; it
+        # runs on the panel's own host) polls this via /mirror/api/ambient
+        # and powers the panel fully off while it's set, then clears it
+        # itself (POSTs back to /mirror/api/display/on) the moment it sees a
+        # touch wake the panel.
+        self.screen_off: bool = False
 
     # --- mutation ---------------------------------------------------------
 
@@ -71,6 +78,12 @@ class MirrorState:
         }
         return True
 
+    def set_screen_off(self, off: bool) -> bool:
+        if self.screen_off == off:
+            return False
+        self.screen_off = off
+        return True
+
     def clear_icon(self, etype: str) -> bool:
         changed = self.icons.pop(etype, None) is not None
         if self.active and self.active["event"].get("type") == etype:
@@ -108,6 +121,7 @@ class MirrorState:
                 for t, e in sorted(self.icons.items(), key=lambda kv: kv[1]["created"])
             ],
             "last_event": self.last_event,
+            "screen_off": self.screen_off,
         }
 
     def save(self) -> None:
@@ -115,7 +129,9 @@ class MirrorState:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"active": self.active, "icons": self.icons}))
+            tmp.write_text(json.dumps({
+                "active": self.active, "icons": self.icons, "screen_off": self.screen_off,
+            }))
             tmp.replace(path)
         except OSError as exc:
             log.warning("could not persist mirror state: %s", exc)
@@ -128,6 +144,7 @@ class MirrorState:
             return
         self.active = data.get("active")
         self.icons = data.get("icons") or {}
+        self.screen_off = bool(data.get("screen_off", False))
         # Drop anything already expired on the way back in.
         self.tick()
 

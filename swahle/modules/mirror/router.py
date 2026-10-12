@@ -237,3 +237,26 @@ async def ambient():
 async def forecast():
     from .forecast import five_day
     return JSONResponse({"days": await five_day() or []})
+
+
+# --- manual screen power (menu button + display-power.sh on the Pi) ----
+
+@router.post("/mirror/api/display/off")
+async def display_off():
+    """Menu's "Screen Off" button. The Pi's display-power.sh (not this
+    process) polls `screen_off` via /mirror/api/ambient and does the actual
+    powering off; this just records the request."""
+    if state.set_screen_off(True):
+        state.save()
+        hub.broadcast_state()
+    return JSONResponse({"ok": True})
+
+
+@router.post("/mirror/api/display/on")
+async def display_on():
+    """Cleared by display-power.sh itself once a touch wakes the panel (not
+    normally called by the page) -- but harmless/idempotent either way."""
+    if state.set_screen_off(False):
+        state.save()
+        hub.broadcast_state()
+    return JSONResponse({"ok": True})
