@@ -4,10 +4,19 @@
 html, body {
   width: 100%; height: 100%; overflow: hidden;
   background: #000; color: #f2f2f2;
-  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  /* Inter/Helvetica Neue/Arial are all absent on Raspberry Pi OS -- fc-match
+     confirmed this whole app has actually been rendering in the generic
+     sans-serif fallback (DejaVu Sans) the entire time, not the intended
+     font. Piboto (RPi's own Roboto rebrand, bundled on every Pi OS image)
+     is the closest match in spirit and is guaranteed present here. */
+  font-family: "Piboto", "Roboto", "Noto Sans", "DejaVu Sans", sans-serif;
   -webkit-user-select: none; user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+/* <img> is draggable by default -- on a touch kiosk a tap with any jitter
+   can get eaten as a drag-start instead of firing a click, which is never
+   wanted here (nothing in this app does image drag-and-drop). */
+img { -webkit-user-drag: none; user-drag: none; }
 /* quiet-hours dimming is applied as `filter: brightness()` on <body> */
 body { transition: filter 1.4s ease; }
 
@@ -131,7 +140,12 @@ body { transition: filter 1.4s ease; }
 .ghost:active { background: #1c1c1c; }
 
 /* --- sub-views --- */
-#view { background: #0a0a0a; padding: 40px 48px 48px; overflow-y: auto; }
+/* Scrolls (Cassini's day can be taller than the panel), but the scrollbar
+   track itself has no business showing on a touch kiosk -- there's nothing
+   to click it with. */
+#view { background: #0a0a0a; padding: 40px 48px 48px; overflow-y: auto;
+  scrollbar-width: none; -ms-overflow-style: none; }
+#view::-webkit-scrollbar { display: none; }
 #view-back { position: sticky; top: 0; margin-bottom: 24px; }
 .subview { animation: fade .3s ease; }
 /* #v-cameras/#v-controls set `display` via an ID rule, which outranks the UA
@@ -181,11 +195,52 @@ body { transition: filter 1.4s ease; }
 .cassini-head h2 { font-size: 38px; font-weight: 400; }
 .cassini-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
 .cassini-col h3 { font-size: 24px; font-weight: 400; opacity: .6; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 2px; }
-.entry { background: #141414; border-radius: 16px; overflow: hidden; margin-bottom: 20px; }
-.entry img { width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover; }
-.entry .meta { padding: 16px 20px; font-size: 24px; }
-.entry .meta small { display: block; opacity: .55; font-size: 19px; margin-top: 4px; }
 .empty { opacity: .4; font-size: 24px; padding: 20px 0; }
+
+/* cassini session/detection cards -- modeled on /app/naturalist's timeline:
+   a card is one *event* (a hole-cam visit, or a shed-cam detection), not one
+   row per frame. Thumbnails are small on purpose -- tap one to see it
+   full-size in #lightbox. Sizing/spacing matches the rest of the app's
+   touch-friendly scale (.ctl, .entry, .menu-btn), not a cramped mini version. */
+.cas-away {
+  opacity: .5; font-size: 21px; font-style: italic; letter-spacing: .3px;
+  padding: 6px 4px 20px;
+}
+.cas-card {
+  background: #141414; border: 1px solid #262626; border-radius: 18px;
+  padding: 28px 30px; margin-bottom: 24px;
+}
+.cas-times { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; font-size: 26px; }
+.cas-arrive { color: #6ab7ff; font-weight: 500; }
+.cas-depart { color: #e0a53d; font-weight: 500; }
+.cas-arrow { opacity: .4; }
+.cas-dur { opacity: .55; font-size: 20px; margin-left: auto; }
+.cas-meta { opacity: .5; font-size: 20px; margin-top: 6px; letter-spacing: .2px; }
+.cas-frames { display: flex; gap: 14px; margin-top: 18px; }
+/* The tap target is this wrapper, padded a bit larger than the image itself
+   -- a small thumbnail is a small target for the touch overlay. */
+.cas-thumb-wrap { display: inline-flex; padding: 5px; cursor: zoom-in; touch-action: manipulation; }
+.cas-frames .cas-thumb-wrap { flex: 1; }
+.cas-thumb {
+  width: 140px; height: 105px; object-fit: cover; border-radius: 12px;
+  background: #000; flex-shrink: 0; display: block;
+  -webkit-user-drag: none; user-drag: none;
+}
+.cas-frames .cas-thumb { width: 100%; }
+.cas-exit, .cas-sighting { margin-top: 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.cas-badge {
+  display: inline-block; font-size: 19px; font-weight: 500; padding: 7px 18px;
+  border-radius: 999px; background: #262626; letter-spacing: .2px;
+}
+.cas-badge.warn { background: rgba(224,83,61,.22); color: #ff8a73; }
+.cas-badge.exit { background: rgba(224,165,61,.2); color: #e0a53d; }
+.cas-badge.shed, .cas-badge.found { background: rgba(58,122,69,.28); color: #6adf87; }
+.cas-badge.pending, .cas-badge.scanning { background: rgba(224,165,61,.2); color: #e0a53d; }
+.cas-badge.miss { background: #262626; opacity: .6; }
+
+/* shed column: no times/exit info, just a thumbnail + timestamp per card */
+#cassini-shed .cas-card { display: flex; align-items: center; gap: 20px; padding: 18px 24px; }
+#cassini-shed .cas-meta { margin-top: 0; font-size: 22px; }
 
 /* forecast -- panel is a fixed 1920x1080 (checked via wlr-randr on the pi), so
    this is sized against that directly rather than left to wrap/scroll.
@@ -234,6 +289,14 @@ body { transition: filter 1.4s ease; }
 .tray-icon .ring { stroke: #6ab7ff; transition: stroke-dashoffset 1s linear; }
 .tray-icon .glyph { position: relative; z-index: 1; width: 46px; height: 46px; color: #f2f2f2; }
 .tray-icon span { position: relative; z-index: 1; }
+
+/* --- lightbox (cassini thumbnails, tap to full-size) --- */
+#lightbox {
+  position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.9);
+  display: flex; align-items: center; justify-content: center;
+}
+#lightbox[hidden] { display: none !important; }
+#lightbox img { max-width: 94vw; max-height: 94vh; border-radius: 12px; }
 
 /* --- hotspot + status --- */
 #hotspot { position: fixed; left: 0; top: 0; width: 120px; height: 120px; z-index: 9; }

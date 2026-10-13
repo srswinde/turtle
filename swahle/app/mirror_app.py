@@ -46,6 +46,24 @@ def create_mirror_app() -> FastAPI:
 
     app = FastAPI(title="Swahle Smart Mirror", lifespan=lifespan)
 
+    # The kiosk is one persistent Chromium tab that's "refreshed" by killing
+    # and relaunching the process (see deploy/kiosk/README.md), never by a
+    # user-triggered reload -- and a plain top-level navigation on process
+    # start is free to serve a heuristically-"fresh" cached copy of a static
+    # file without even asking the server, since neither StaticFiles nor
+    # FileResponse set Cache-Control by default (only Last-Modified/ETag).
+    # Confirmed via chrome://inspect (performance.getEntriesByType("resource"))
+    # that this actually happened: app.css served with transferSize 0 (pure
+    # cache hit) was several edits stale, which is why a "working" fix kept
+    # not showing up on the panel. `no-cache` still allows a 304 round-trip
+    # (cheap on this LAN, these files are tiny) but forces that revalidation
+    # every time instead of trusting a local cache's guess.
+    @app.middleware("http")
+    async def no_cache(request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> JSONResponse:
         return JSONResponse({"status": "ok"})

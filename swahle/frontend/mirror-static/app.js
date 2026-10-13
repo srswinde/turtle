@@ -363,8 +363,69 @@
     }, 12000);
   }
 
-  /* ---------- cassini's day ---------- */
+  /* ---------- cassini's day ----------
+     Mirrors /app/naturalist's grouping: each hole-cam "session" is one visit
+     (arrived/clearest/left keyframes, not one row per frame), with its
+     shed-cam correlation (if the main dashboard already analyzed that
+     departure -- the mirror never triggers the LLM call itself) shown right
+     on the card. Thumbnails are small; tapping one opens the shared
+     lightbox full-size. */
   let cassiniDate = null;
+
+  function fmtDur(s) {
+    if (s == null) return "";
+    if (s < 60) return Math.round(s) + "s";
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + "m";
+    return Math.floor(m / 60) + "h " + (m % 60) + "m";
+  }
+
+  function casThumb(url, label) {
+    if (!url) return "";
+    // The tappable element is the padded wrapper, not the bare <img> -- a
+    // 120x90 image is a small target for the touch overlay, so this gives a
+    // few extra mm of margin around it without changing the visual size.
+    // draggable=false: <img> is natively draggable by default, and a touch
+    // tap with any jitter can get eaten as a drag-start instead of firing a
+    // click -- this was very likely why taps weren't opening the lightbox.
+    return `<span class="cas-thumb-wrap" data-full="${url}">
+        <img class="cas-thumb" loading="lazy" src="${url}" alt="${label}" draggable="false"></span>`;
+  }
+
+  const CAS_DIR_ARROW = { left: "←", right: "→", up: "↑", down: "↓",
+    "up-left": "↖", "up-right": "↗", "down-left": "↙", "down-right": "↘",
+    "toward-camera": "⊙ toward", "away-from-camera": "⊗ into hole", stayed: "•", unclear: "?" };
+
+  function casVerifyBadge(s) {
+    const v = s.verification;
+    if (!v || v.verified !== false) return "";
+    return `<span class="cas-badge warn">⚠ unconfirmed</span>`;
+  }
+
+  function casExitBadge(s) {
+    const e = s.exit;
+    if (!e || !e.direction) return "";
+    const arrow = CAS_DIR_ARROW[e.direction] || "";
+    const shed = e.toward_shed ? ` <span class="cas-badge shed">→ shed</span>` : "";
+    return `<span class="cas-badge exit">exited ${arrow} ${e.direction}</span>${shed}`;
+  }
+
+  function casSightingBlock(s) {
+    const e = s.exit, sg = s.sighting;
+    if (!e || !e.toward_shed) return "";
+    if (!sg) return `<div class="cas-sighting"><span class="cas-badge pending">⏳ acquisition pending</span></div>`;
+    if (sg.triggered_at && !sg.completed_at) {
+      return `<div class="cas-sighting"><span class="cas-badge scanning">🏚 scanning…</span></div>`;
+    }
+    if (sg.found) {
+      return `<div class="cas-sighting">
+          <span class="cas-badge found">🏚 found! ${fmtDur(sg.lag_seconds)} later</span>
+          ${casThumb(sg.image_url, "shed-cam sighting")}
+        </div>`;
+    }
+    return `<div class="cas-sighting"><span class="cas-badge miss">🏚 not spotted</span></div>`;
+  }
+
   async function renderCassini(dateStr) {
     const view = $("#v-cassini"); view.hidden = false;
     let d;
@@ -376,23 +437,44 @@
     $("#cassini-date").textContent = d.is_today ? "Today" : d.date;
     const hole = $("#cassini-hole"), shed = $("#cassini-shed");
     hole.innerHTML = ""; shed.innerHTML = "";
+
     if (!d.hole.length) hole.innerHTML = `<p class="empty">No hole-cam visits.</p>`;
     for (const s of d.hole) {
+      if (s.away_before_s != null) {
+        const away = document.createElement("div");
+        away.className = "cas-away";
+        away.textContent = `away ${fmtDur(s.away_before_s)}`;
+        hole.appendChild(away);
+      }
+      const kf = s.keyframes || {};
       const el = document.createElement("div");
-      el.className = "entry";
-      const kf = (s.keyframes && (s.keyframes.peak || s.keyframes.first)) || "";
-      el.innerHTML = (kf ? `<img src="${kf}" alt="">` : "") +
-        `<div class="meta">${clock(s.start)} – ${clock(s.end)}` +
-        `<small>${Math.round(s.duration_s / 60)} min` +
-        (s.away_before_s ? ` · away ${Math.round(s.away_before_s / 60)} min before` : "") + `</small></div>`;
+      el.className = "cas-card";
+      el.innerHTML = `
+        <div class="cas-times">
+          <span class="cas-arrive">▲ ${clock(s.start)}</span>
+          <span class="cas-arrow">→</span>
+          <span class="cas-depart">▼ ${clock(s.end)}</span>
+          <span class="cas-dur">${fmtDur(s.duration_s)}</span>
+          ${casVerifyBadge(s)}
+        </div>
+        <div class="cas-meta">${s.frames} frames · peak ${Math.round((s.peak_prob || 0) * 100)}%</div>
+        <div class="cas-frames">
+          ${casThumb(kf.first, "arrived")}
+          ${casThumb(kf.peak, "clearest")}
+          ${casThumb(kf.last, "left")}
+        </div>
+        ${casExitBadge(s) ? `<div class="cas-exit">${casExitBadge(s)}</div>` : ""}
+        ${casSightingBlock(s)}`;
       hole.appendChild(el);
     }
+
     if (!d.shed.length) shed.innerHTML = `<p class="empty">No shed-cam detections.</p>`;
     for (const s of d.shed) {
       const el = document.createElement("div");
-      el.className = "entry";
-      el.innerHTML = (s.image_url ? `<img src="${s.image_url}" alt="">` : "") +
-        `<div class="meta">${clock(s.ts)}<small>score ${(s.score || 0).toFixed(2)}</small></div>`;
+      el.className = "cas-card";
+      el.innerHTML = `
+        ${casThumb(s.image_url, "shed-cam detection")}
+        <div class="cas-meta">${clock(s.ts)} · score ${((s.score || 0) * 100).toFixed(0)}%</div>`;
       shed.appendChild(el);
     }
   }
@@ -402,6 +484,19 @@
       base.setDate(base.getDate() + (+b.dataset.day));
       renderCassini(base.toISOString().slice(0, 10));
     }));
+
+  /* ---------- lightbox (shared -- cassini thumbnails tap to full-size) ----------
+     Delegated on #view (bound once) rather than re-wired per render, so it
+     can't go stale across renderCassini() re-renders / date navigation. */
+  function showLightbox(url) {
+    $("#lightbox-img").src = url;
+    $("#lightbox").hidden = false;
+  }
+  layers.view.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-full]");
+    if (t) showLightbox(t.dataset.full);
+  });
+  $("#lightbox").addEventListener("click", () => { $("#lightbox").hidden = true; });
 
   /* ---------- 5-day forecast ---------- */
   let forecastCache = null;   // last-seen days, survives view switches
